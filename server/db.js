@@ -28,6 +28,11 @@ db.exec(`
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  );
 `);
 
 const columns = db.prepare("PRAGMA table_info(services)").all().map(column => column.name);
@@ -59,6 +64,23 @@ const rowToService = (row) => ({
   lastCheckedAt: row.last_checked_at,
   responseTimeMs: row.response_time_ms,
 });
+
+const defaultSettings = {
+  dashboardName: "Andre's Homelab",
+  dashboardSubtitle: "Control Panel",
+  dashboardIcon: "Server",
+};
+
+const settingRows = [
+  ["dashboardName", defaultSettings.dashboardName],
+  ["dashboardSubtitle", defaultSettings.dashboardSubtitle],
+  ["dashboardIcon", defaultSettings.dashboardIcon],
+];
+
+const seedSetting = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+for (const [key, value] of settingRows) {
+  seedSetting.run(key, value);
+}
 
 const insert = db.prepare(`
   INSERT INTO services (
@@ -166,4 +188,28 @@ export function reorderServices(ids) {
   });
   reorder();
   return listServices();
+}
+
+export function getSettings() {
+  const rows = db.prepare("SELECT key, value FROM settings").all();
+  return {
+    ...defaultSettings,
+    ...Object.fromEntries(rows.map(row => [row.key, row.value])),
+  };
+}
+
+export function updateSettings(settings) {
+  const update = db.prepare(`
+    INSERT INTO settings (key, value) VALUES (?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value
+  `);
+
+  const save = db.transaction(() => {
+    for (const [key, value] of Object.entries(settings)) {
+      if (key in defaultSettings) update.run(key, String(value));
+    }
+  });
+
+  save();
+  return getSettings();
 }

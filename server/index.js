@@ -7,10 +7,12 @@ import { fileURLToPath } from "node:url";
 import {
   createService,
   deleteService,
+  getSettings,
   getService,
   listServices,
   reorderServices,
   seedDatabase,
+  updateSettings,
   updateService,
   updateServiceStatus,
 } from "./db.js";
@@ -24,6 +26,12 @@ const host = process.env.HOST ?? "0.0.0.0";
 const categories = new Set(["AI", "Infrastructure", "Media", "Network", "Security"]);
 const checkTypes = new Set(["HTTP", "Ping", "TCP", "None"]);
 const statuses = new Set(["online", "offline", "slow", "unknown"]);
+const iconNames = new Set([
+  "Server", "Box", "Play", "Film", "Shield", "Globe", "Lock", "Camera", "Cpu",
+  "MessageSquare", "BarChart2", "Activity", "Cloud", "ShieldCheck", "GitBranch",
+  "Wifi", "Database", "Terminal", "Monitor", "HardDrive", "Layers", "Network",
+  "RefreshCw",
+]);
 
 seedDatabase();
 
@@ -129,6 +137,29 @@ function normalizeService(input, existing = {}) {
 }
 
 app.get("/api/health", async () => ({ ok: true }));
+
+app.get("/api/settings", async () => getSettings());
+
+app.patch("/api/settings", async (request) => {
+  const input = request.body ?? {};
+  const next = {};
+
+  if ("dashboardName" in input) {
+    next.dashboardName = String(input.dashboardName ?? "").trim().slice(0, 80);
+    if (!next.dashboardName) throw badRequest("Dashboard name is required");
+  }
+
+  if ("dashboardSubtitle" in input) {
+    next.dashboardSubtitle = String(input.dashboardSubtitle ?? "").trim().slice(0, 80);
+  }
+
+  if ("dashboardIcon" in input) {
+    next.dashboardIcon = String(input.dashboardIcon ?? "Server");
+    if (!iconNames.has(next.dashboardIcon)) throw badRequest("Invalid dashboard icon");
+  }
+
+  return updateSettings(next);
+});
 
 app.get("/api/services", async () => listServices());
 

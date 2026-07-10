@@ -36,6 +36,12 @@ interface Service {
   responseTimeMs?: number | null;
 }
 
+interface DashboardSettings {
+  dashboardName: string;
+  dashboardSubtitle: string;
+  dashboardIcon: string;
+}
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>> = {
@@ -60,6 +66,12 @@ const CAT_CFG: Record<Category, { chip: string; active: string; hover: string }>
 };
 
 const ALL_CATEGORIES: Category[] = ["AI", "Infrastructure", "Media", "Network", "Security"];
+
+const DEFAULT_SETTINGS: DashboardSettings = {
+  dashboardName: "Andre's Homelab",
+  dashboardSubtitle: "Control Panel",
+  dashboardIcon: "Server",
+};
 
 const API_BASE = "/api";
 
@@ -714,6 +726,118 @@ function DeleteConfirmModal({ action, onCancel, onConfirm }: {
   );
 }
 
+function DashboardSettingsModal({ settings, onSave, onClose }: {
+  settings: DashboardSettings;
+  onSave: (settings: DashboardSettings) => Promise<void> | void;
+  onClose: () => void;
+}) {
+  const [form, setForm] = useState<DashboardSettings>(settings);
+  const PreviewIcon = ICON_MAP[form.dashboardIcon] ?? Server;
+  const inputCls = "w-full bg-muted/40 border border-border rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:bg-muted/60 transition-colors";
+  const labelCls = "block text-[11px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wide";
+
+  const set = <K extends keyof DashboardSettings>(k: K, v: DashboardSettings[K]) =>
+    setForm(prev => ({ ...prev, [k]: v }));
+
+  const handleSave = async () => {
+    if (!form.dashboardName.trim()) return;
+    await onSave({
+      dashboardName: form.dashboardName.trim(),
+      dashboardSubtitle: form.dashboardSubtitle.trim(),
+      dashboardIcon: form.dashboardIcon,
+    });
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-[460px] bg-card border border-border rounded-xl shadow-2xl shadow-black/40">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <div className="flex items-center gap-2.5">
+            <div className="size-7 rounded-md bg-primary/15 flex items-center justify-center">
+              <Edit2 size={12} className="text-primary" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground leading-none">Dashboard Settings</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-none">Customize header identity</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="size-7 flex items-center justify-center rounded-md hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className={labelCls}>Dashboard Name *</label>
+            <input
+              className={inputCls}
+              value={form.dashboardName}
+              onChange={e => set("dashboardName", e.target.value)}
+              placeholder="Andre's Homelab"
+              autoFocus
+            />
+          </div>
+
+          <div className="grid grid-cols-[1fr_140px] gap-3">
+            <div>
+              <label className={labelCls}>Subtitle</label>
+              <input
+                className={inputCls}
+                value={form.dashboardSubtitle}
+                onChange={e => set("dashboardSubtitle", e.target.value)}
+                placeholder="Control Panel"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Icon</label>
+              <select
+                className={inputCls}
+                value={form.dashboardIcon}
+                onChange={e => set("dashboardIcon", e.target.value)}
+              >
+                {Object.keys(ICON_MAP).map(k => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 p-3 bg-muted/20 rounded-lg border border-border border-dashed">
+            <div className="size-9 rounded-md bg-primary/20 flex items-center justify-center">
+              <PreviewIcon size={16} className="text-primary" strokeWidth={2} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground leading-none truncate">{form.dashboardName || "Dashboard Name"}</p>
+              <p className="text-[10px] text-muted-foreground leading-none mt-1 font-mono truncate">{form.dashboardSubtitle || "Subtitle"}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
+          <button
+            onClick={onClose}
+            className="h-8 px-3 text-xs rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={!form.dashboardName.trim()}
+            className="h-8 px-3 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+          >
+            Save Changes
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GroupHeader({ category, count }: { category: Category; count: number }) {
   const cfg = CAT_CFG[category];
   return (
@@ -734,6 +858,8 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [services, setServices] = useState<Service[]>([]);
   const [modalService, setModalService] = useState<Service | "new" | null>(null);
+  const [settingsModalOpen, setSettingsModalOpen] = useState(false);
+  const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>(DEFAULT_SETTINGS);
   const [manageMode, setManageMode] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [grouped, setGrouped] = useState(false);
@@ -750,6 +876,14 @@ export default function App() {
       setServices(await apiRequest<Service[]>("/services"));
     } catch (error) {
       console.error("Failed to load services", error);
+    }
+  };
+
+  const loadSettings = async () => {
+    try {
+      setDashboardSettings(await apiRequest<DashboardSettings>("/settings"));
+    } catch (error) {
+      console.error("Failed to load dashboard settings", error);
     }
   };
 
@@ -799,6 +933,7 @@ export default function App() {
   // Services
   useEffect(() => {
     loadServices();
+    loadSettings();
     const refreshStatuses = async () => {
       if (services.length === 0) return;
       setIsRefreshingAll(true);
@@ -955,12 +1090,32 @@ export default function App() {
     setActiveCategory("All");
   };
 
+  const handleHeaderClick = () => {
+    if (manageMode) {
+      setSettingsModalOpen(true);
+      return;
+    }
+
+    setSearch("");
+    setStatusFilter("all");
+    setActiveCategory("All");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSettingsSave = async (settings: DashboardSettings) => {
+    setDashboardSettings(await apiRequest<DashboardSettings>("/settings", {
+      method: "PATCH",
+      body: JSON.stringify(settings),
+    }));
+  };
+
   const visibleSelectedCount = filtered.filter(service => selectedIds.has(service.id)).length;
 
   const modalServiceObj = modalService === "new" ? null : modalService;
 
   const dateStr = currentTime.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
   const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const HeaderIcon = ICON_MAP[dashboardSettings.dashboardIcon] ?? Server;
 
   // Group filtered services by category
   const groupedServices = ALL_CATEGORIES
@@ -975,15 +1130,27 @@ export default function App() {
         <div className="max-w-screen-2xl mx-auto px-4 h-13 flex items-center gap-3" style={{ height: "52px" }}>
 
           {/* Logo + Title */}
-          <div className="flex items-center gap-2 flex-shrink-0 mr-1">
-            <div className="size-7 rounded-md bg-primary/20 flex items-center justify-center">
-              <Server size={13} className="text-primary" strokeWidth={2} />
+          <button
+            onClick={handleHeaderClick}
+            className={clsx(
+              "flex items-center gap-2 flex-shrink-0 mr-1 rounded-lg -ml-1 px-1 py-1 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+              manageMode ? "bg-primary/5 hover:bg-primary/10" : "hover:bg-muted/30"
+            )}
+            title={manageMode ? "Edit dashboard header" : "Show all services"}
+          >
+            <div className={clsx(
+              "size-7 rounded-md flex items-center justify-center transition-colors",
+              manageMode ? "bg-primary/25 ring-1 ring-primary/30" : "bg-primary/20"
+            )}>
+              <HeaderIcon size={13} className="text-primary" strokeWidth={2} />
             </div>
-            <div>
-              <p className="text-sm font-semibold text-foreground leading-none">Andre's Homelab</p>
-              <p className="text-[10px] text-muted-foreground leading-none mt-0.5 font-mono">Control Panel</p>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-foreground leading-none truncate max-w-[190px]">{dashboardSettings.dashboardName}</p>
+              <p className="text-[10px] text-muted-foreground leading-none mt-0.5 font-mono truncate max-w-[190px]">
+                {manageMode ? "Manage Mode" : dashboardSettings.dashboardSubtitle}
+              </p>
             </div>
-          </div>
+          </button>
 
           {/* Divider */}
           <div className="h-5 w-px bg-border flex-shrink-0" />
@@ -1335,6 +1502,14 @@ export default function App() {
           onSave={handleSave}
           onDelete={requestSingleDelete}
           onClose={() => setModalService(null)}
+        />
+      )}
+
+      {settingsModalOpen && (
+        <DashboardSettingsModal
+          settings={dashboardSettings}
+          onSave={handleSettingsSave}
+          onClose={() => setSettingsModalOpen(false)}
         />
       )}
 
