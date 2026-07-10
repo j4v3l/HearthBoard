@@ -22,12 +22,27 @@ db.exec(`
     icon TEXT NOT NULL DEFAULT 'Server',
     status TEXT NOT NULL DEFAULT 'unknown',
     status_check_enabled INTEGER NOT NULL DEFAULT 1,
+    display_order INTEGER NOT NULL DEFAULT 0,
     last_checked_at TEXT,
     response_time_ms INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   );
 `);
+
+const columns = db.prepare("PRAGMA table_info(services)").all().map(column => column.name);
+if (!columns.includes("display_order")) {
+  db.exec("ALTER TABLE services ADD COLUMN display_order INTEGER NOT NULL DEFAULT 0");
+  db.exec(`
+    UPDATE services
+    SET display_order = (
+      SELECT COUNT(*)
+      FROM services AS earlier
+      WHERE earlier.category < services.category
+         OR (earlier.category = services.category AND earlier.name <= services.name)
+    )
+  `);
+}
 
 const rowToService = (row) => ({
   id: row.id,
@@ -40,6 +55,7 @@ const rowToService = (row) => ({
   icon: row.icon,
   status: row.status,
   statusCheckEnabled: Boolean(row.status_check_enabled),
+  displayOrder: row.display_order,
   lastCheckedAt: row.last_checked_at,
   responseTimeMs: row.response_time_ms,
 });
@@ -47,10 +63,10 @@ const rowToService = (row) => ({
 const insert = db.prepare(`
   INSERT INTO services (
     id, name, description, category, url, health_url, check_type, icon,
-    status, status_check_enabled, last_checked_at, response_time_ms
+    status, status_check_enabled, display_order, last_checked_at, response_time_ms
   ) VALUES (
     @id, @name, @description, @category, @url, @healthUrl, @checkType, @icon,
-    @status, @statusCheckEnabled, @lastCheckedAt, @responseTimeMs
+    @status, @statusCheckEnabled, @displayOrder, @lastCheckedAt, @responseTimeMs
   )
 `);
 
@@ -59,10 +75,11 @@ export function seedDatabase() {
   if (count > 0) return;
 
   const seed = db.transaction(() => {
-    for (const service of seedServices) {
+    for (const [index, service] of seedServices.entries()) {
       insert.run({
         ...service,
         statusCheckEnabled: service.statusCheckEnabled ? 1 : 0,
+        displayOrder: index,
         lastCheckedAt: null,
         responseTimeMs: null,
       });
@@ -73,7 +90,7 @@ export function seedDatabase() {
 }
 
 export function listServices() {
-  return db.prepare("SELECT * FROM services ORDER BY category, name").all().map(rowToService);
+  return db.prepare("SELECT * FROM services ORDER BY display_order, name").all().map(rowToService);
 }
 
 export function getService(id) {
@@ -82,9 +99,11 @@ export function getService(id) {
 }
 
 export function createService(service) {
+  const nextOrder = db.prepare("SELECT COALESCE(MAX(display_order), -1) + 1 AS nextOrder FROM services").get().nextOrder;
   insert.run({
     ...service,
     statusCheckEnabled: service.statusCheckEnabled ? 1 : 0,
+    displayOrder: service.displayOrder ?? nextOrder,
     lastCheckedAt: service.lastCheckedAt ?? null,
     responseTimeMs: service.responseTimeMs ?? null,
   });
@@ -103,6 +122,7 @@ export function updateService(id, service) {
       icon = @icon,
       status = @status,
       status_check_enabled = @statusCheckEnabled,
+      display_order = @displayOrder,
       last_checked_at = @lastCheckedAt,
       response_time_ms = @responseTimeMs,
       updated_at = CURRENT_TIMESTAMP
@@ -111,11 +131,16 @@ export function updateService(id, service) {
     ...service,
     id,
     statusCheckEnabled: service.statusCheckEnabled ? 1 : 0,
+    displayOrder: service.displayOrder ?? existingDisplayOrder(id),
     lastCheckedAt: service.lastCheckedAt ?? null,
     responseTimeMs: service.responseTimeMs ?? null,
   });
 
   return result.changes ? getService(id) : null;
+}
+
+function existingDisplayOrder(id) {
+  return db.prepare("SELECT display_order FROM services WHERE id = ?").get(id)?.display_order ?? 0;
 }
 
 export function deleteService(id) {
@@ -132,4 +157,13 @@ export function updateServiceStatus(id, status, responseTimeMs = null) {
     WHERE id = ?
   `).run(status, responseTimeMs, new Date().toISOString(), id);
   return getService(id);
+}
+
+export function reorderServices(ids) {
+  const update = db.prepare("UPDATE services SET display_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?");
+  const reorder = db.transaction(() => {
+    ids.forEach((id, index) => update.run(index, id));
+  });
+  reorder();
+  return listServices();
 }

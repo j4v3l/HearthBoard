@@ -9,6 +9,7 @@ import {
   deleteService,
   getService,
   listServices,
+  reorderServices,
   seedDatabase,
   updateService,
   updateServiceStatus,
@@ -95,6 +96,9 @@ function normalizeService(input, existing = {}) {
     icon: String(input.icon ?? existing.icon ?? "Server"),
     status: String(input.status ?? existing.status ?? "unknown"),
     statusCheckEnabled: Boolean(input.statusCheckEnabled ?? existing.statusCheckEnabled ?? true),
+    displayOrder: input.displayOrder != null
+      ? Number(input.displayOrder)
+      : existing.displayOrder,
     lastCheckedAt: existing.lastCheckedAt ?? null,
     responseTimeMs: existing.responseTimeMs ?? null,
   };
@@ -149,6 +153,16 @@ app.patch("/api/services/:id", async (request, reply) => {
 app.delete("/api/services/:id", async (request, reply) => {
   if (!deleteService(request.params.id)) return reply.notFound("Service not found");
   return reply.code(204).send();
+});
+
+app.post("/api/services/reorder", async (request) => {
+  const ids = Array.isArray(request.body?.ids) ? request.body.ids.map(id => String(id)) : [];
+  const existingIds = new Set(listServices().map(service => service.id));
+  const uniqueIds = new Set(ids);
+  if (ids.length !== existingIds.size || uniqueIds.size !== existingIds.size || ids.some(id => !existingIds.has(id))) {
+    throw badRequest("Reorder payload must include every service id exactly once");
+  }
+  return reorderServices(ids);
 });
 
 app.post("/api/services/:id/check", async (request, reply) => {

@@ -5,7 +5,7 @@ import {
   MessageSquare, BarChart2, Activity, Cloud, ShieldCheck, GitBranch, Wifi,
   Search, Moon, Sun, Edit2, Plus, X, Copy, ExternalLink, Check, Layers,
   Database, Terminal, Monitor, HardDrive, AlertTriangle, Clock, Zap,
-  LayoutGrid, List, RefreshCw, Network,
+  LayoutGrid, List, RefreshCw, Network, GripVertical, Trash2, CheckSquare, Square,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -16,6 +16,9 @@ type FilterCategory = "All" | Category;
 type CheckType = "HTTP" | "Ping" | "TCP" | "None";
 type ViewMode = "grid" | "list";
 type StatusFilter = "all" | "online" | "offline" | "degraded";
+type ConfirmAction =
+  | { type: "single-delete"; ids: string[]; names: string[] }
+  | { type: "bulk-delete"; ids: string[]; names: string[] };
 
 interface Service {
   id: string;
@@ -28,6 +31,7 @@ interface Service {
   icon: string;
   status: Status;
   statusCheckEnabled: boolean;
+  displayOrder?: number;
   lastCheckedAt?: string | null;
   responseTimeMs?: number | null;
 }
@@ -129,11 +133,16 @@ function formatLastChecked(service: Service, isChecking: boolean) {
   return `Checked ${hours}h ago${response}`;
 }
 
-function ServiceCard({ service, onEdit, editMode, isChecking }: {
+function ServiceCard({ service, onEdit, manageMode, isChecking, selected, onSelect, onDragStart, onDragOver, onDrop }: {
   service: Service;
   onEdit: (s: Service) => void;
-  editMode: boolean;
+  manageMode: boolean;
   isChecking: boolean;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  onDragStart: (id: string) => void;
+  onDragOver: (id: string) => void;
+  onDrop: () => void;
 }) {
   const [copied, setCopied] = useState(false);
   const Icon = ICON_MAP[service.icon] ?? Server;
@@ -162,11 +171,36 @@ function ServiceCard({ service, onEdit, editMode, isChecking }: {
     <div className={clsx(
       "group relative overflow-hidden flex flex-col bg-card border rounded-lg p-3.5 transition-all duration-150 cursor-default",
       "hover:shadow-lg hover:shadow-black/25",
-      editMode ? "border-primary/30 ring-1 ring-primary/20" : "border-border hover:border-white/10 dark:hover:border-white/10"
-    )}>
+      selected
+        ? "border-primary/55 ring-1 ring-primary/30 bg-primary/5"
+        : manageMode ? "border-primary/30 ring-1 ring-primary/20" : "border-border hover:border-white/10 dark:hover:border-white/10"
+    )}
+      draggable={manageMode}
+      onDragStart={() => onDragStart(service.id)}
+      onDragOver={e => { if (manageMode) { e.preventDefault(); onDragOver(service.id); } }}
+      onDrop={e => { if (manageMode) { e.preventDefault(); onDrop(); } }}
+    >
       {isChecking && (
         <div className="absolute left-0 top-0 h-0.5 w-full bg-primary/20">
           <div className="h-full w-1/3 animate-pulse bg-primary" />
+        </div>
+      )}
+
+      {manageMode && (
+        <div className="absolute right-2 top-2 z-10 flex items-center gap-1">
+          <button
+            onClick={() => onSelect(service.id)}
+            className="size-7 flex items-center justify-center rounded-md border border-border bg-background/80 text-muted-foreground hover:text-primary hover:border-primary/35 transition-colors"
+            title={selected ? "Deselect service" : "Select service"}
+          >
+            {selected ? <CheckSquare size={14} /> : <Square size={14} />}
+          </button>
+          <div
+            className="size-7 flex items-center justify-center rounded-md border border-border bg-background/80 text-muted-foreground cursor-grab"
+            title="Drag to reorder"
+          >
+            <GripVertical size={14} />
+          </div>
         </div>
       )}
 
@@ -248,7 +282,17 @@ function ServiceCard({ service, onEdit, editMode, isChecking }: {
 
 // ─── List Row ────────────────────────────────────────────────────────────────
 
-function ServiceRow({ service, onEdit, isChecking }: { service: Service; onEdit: (s: Service) => void; isChecking: boolean }) {
+function ServiceRow({ service, onEdit, isChecking, manageMode, selected, onSelect, onDragStart, onDragOver, onDrop }: {
+  service: Service;
+  onEdit: (s: Service) => void;
+  isChecking: boolean;
+  manageMode: boolean;
+  selected: boolean;
+  onSelect: (id: string) => void;
+  onDragStart: (id: string) => void;
+  onDragOver: (id: string) => void;
+  onDrop: () => void;
+}) {
   const [copied, setCopied] = useState(false);
   const Icon = ICON_MAP[service.icon] ?? Server;
   const hasServiceUrl = service.url.trim().length > 0;
@@ -262,8 +306,29 @@ function ServiceRow({ service, onEdit, isChecking }: { service: Service; onEdit:
   };
 
   return (
-    <div className="relative overflow-hidden flex items-center gap-3 px-4 py-2.5 bg-card border border-border rounded-lg hover:border-white/10 transition-all group">
+    <div
+      className={clsx(
+        "relative overflow-hidden flex items-center gap-3 px-4 py-2.5 bg-card border rounded-lg hover:border-white/10 transition-all group",
+        selected ? "border-primary/55 ring-1 ring-primary/30 bg-primary/5" : "border-border"
+      )}
+      draggable={manageMode}
+      onDragStart={() => onDragStart(service.id)}
+      onDragOver={e => { if (manageMode) { e.preventDefault(); onDragOver(service.id); } }}
+      onDrop={e => { if (manageMode) { e.preventDefault(); onDrop(); } }}
+    >
       {isChecking && <div className="absolute left-0 top-0 h-0.5 w-full bg-primary/40" />}
+      {manageMode && (
+        <>
+          <button
+            onClick={() => onSelect(service.id)}
+            className="size-6 flex items-center justify-center rounded border border-border text-muted-foreground hover:text-primary hover:border-primary/35 transition-colors"
+            title={selected ? "Deselect service" : "Select service"}
+          >
+            {selected ? <CheckSquare size={13} /> : <Square size={13} />}
+          </button>
+          <GripVertical size={14} className="text-muted-foreground cursor-grab" />
+        </>
+      )}
       <div className="size-7 rounded bg-muted flex items-center justify-center flex-shrink-0">
         <Icon size={13} className="text-muted-foreground" strokeWidth={1.75} />
       </div>
@@ -383,12 +448,11 @@ const EMPTY: Omit<Service, "id"> = {
 function EditModal({ service, onSave, onDelete, onClose }: {
   service: Service | null;
   onSave: (s: Service) => Promise<void> | void;
-  onDelete: (id: string) => Promise<void> | void;
+  onDelete: (service: Service) => void;
   onClose: () => void;
 }) {
   const isNew = service === null;
   const [form, setForm] = useState<Omit<Service, "id">>(service ? { ...service } : { ...EMPTY });
-  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) =>
     setForm(prev => ({ ...prev, [k]: v }));
@@ -399,9 +463,8 @@ function EditModal({ service, onSave, onDelete, onClose }: {
     onClose();
   };
 
-  const handleDelete = async () => {
-    if (!deleteConfirm) { setDeleteConfirm(true); return; }
-    if (service) { await onDelete(service.id); onClose(); }
+  const handleDelete = () => {
+    if (service) onDelete(service);
   };
 
   const inputCls = "w-full bg-muted/40 border border-border rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:bg-muted/60 transition-colors";
@@ -564,12 +627,10 @@ function EditModal({ service, onSave, onDelete, onClose }: {
                 onClick={handleDelete}
                 className={clsx(
                   "text-xs px-2 py-1 rounded transition-colors",
-                  deleteConfirm
-                    ? "bg-red-500/20 text-red-400 border border-red-400/30"
-                    : "text-muted-foreground/60 hover:text-red-400 hover:bg-red-400/10"
+                  "text-muted-foreground/60 hover:text-red-400 hover:bg-red-400/10"
                 )}
               >
-                {deleteConfirm ? "Confirm delete" : "Delete"}
+                Delete
               </button>
             )}
           </div>
@@ -596,6 +657,63 @@ function EditModal({ service, onSave, onDelete, onClose }: {
 
 // ─── Category Group Header ────────────────────────────────────────────────────
 
+function DeleteConfirmModal({ action, onCancel, onConfirm }: {
+  action: ConfirmAction;
+  onCancel: () => void;
+  onConfirm: () => Promise<void> | void;
+}) {
+  const count = action.ids.length;
+  const visibleNames = action.names.slice(0, 5);
+  const extra = Math.max(0, action.names.length - visibleNames.length);
+  const title = count === 1 ? "Delete service?" : `Delete ${count} services?`;
+  const buttonText = count === 1 ? "Delete Service" : `Delete ${count} Services`;
+
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-[420px] bg-card border border-border rounded-xl shadow-2xl shadow-black/40">
+        <div className="flex items-start gap-3 px-5 py-4 border-b border-border">
+          <div className="size-8 rounded-md bg-red-400/10 flex items-center justify-center flex-shrink-0">
+            <Trash2 size={15} className="text-red-400" />
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-foreground leading-none">{title}</h2>
+            <p className="text-xs text-muted-foreground mt-2 leading-snug">
+              This will remove the selected service{count === 1 ? "" : "s"} from your dashboard. This cannot be undone.
+            </p>
+          </div>
+        </div>
+
+        <div className="px-5 py-4">
+          <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5">
+            {visibleNames.map(name => (
+              <p key={name} className="text-xs text-foreground truncate">{name}</p>
+            ))}
+            {extra > 0 && (
+              <p className="text-xs text-muted-foreground">and {extra} more</p>
+            )}
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
+          <button
+            onClick={onCancel}
+            className="h-8 px-3 text-xs rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className="h-8 px-3 text-xs rounded-md bg-red-500 text-white hover:bg-red-500/90 transition-colors font-medium"
+          >
+            {buttonText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GroupHeader({ category, count }: { category: Category; count: number }) {
   const cfg = CAT_CFG[category];
   return (
@@ -616,12 +734,16 @@ export default function App() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [services, setServices] = useState<Service[]>([]);
   const [modalService, setModalService] = useState<Service | "new" | null>(null);
-  const [editMode, setEditMode] = useState(false);
+  const [manageMode, setManageMode] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [grouped, setGrouped] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
   const [checkingIds, setCheckingIds] = useState<Set<string>>(new Set());
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [orderDirty, setOrderDirty] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
 
   const loadServices = async () => {
     try {
@@ -697,6 +819,32 @@ export default function App() {
     return () => clearInterval(t);
   }, [services.length]);
 
+  useEffect(() => {
+    if (manageMode) return;
+    setSelectedIds(new Set());
+  }, [manageMode]);
+
+  useEffect(() => {
+    if (draggedId || !orderDirty) return;
+
+    const saveOrder = async () => {
+      try {
+        const ordered = await apiRequest<Service[]>("/services/reorder", {
+          method: "POST",
+          body: JSON.stringify({ ids: services.map(service => service.id) }),
+        });
+        setServices(ordered);
+      } catch (error) {
+        console.error("Failed to save service order", error);
+        loadServices();
+      } finally {
+        setOrderDirty(false);
+      }
+    };
+
+    saveOrder();
+  }, [draggedId, orderDirty, services]);
+
   // Filter
   const filtered = services.filter(s => {
     const matchCat = activeCategory === "All" || s.category === activeCategory;
@@ -734,9 +882,68 @@ export default function App() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    await apiRequest<void>(`/services/${id}`, { method: "DELETE" });
-    setServices(prev => prev.filter(s => s.id !== id));
+  const deleteServices = async (ids: string[]) => {
+    await Promise.all(ids.map(id => apiRequest<void>(`/services/${id}`, { method: "DELETE" })));
+    setServices(prev => prev.filter(s => !ids.includes(s.id)));
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const id of ids) next.delete(id);
+      return next;
+    });
+  };
+
+  const requestSingleDelete = (service: Service) => {
+    setConfirmAction({ type: "single-delete", ids: [service.id], names: [service.name] });
+  };
+
+  const requestBulkDelete = () => {
+    const ids = [...selectedIds];
+    const names = services.filter(service => selectedIds.has(service.id)).map(service => service.name);
+    if (ids.length > 0) setConfirmAction({ type: "bulk-delete", ids, names });
+  };
+
+  const confirmDelete = async () => {
+    if (!confirmAction) return;
+    await deleteServices(confirmAction.ids);
+    setConfirmAction(null);
+    if (confirmAction.type === "single-delete") {
+      setModalService(null);
+    }
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectVisible = () => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      for (const service of filtered) next.add(service.id);
+      return next;
+    });
+  };
+
+  const reorderService = (targetId: string) => {
+    if (!draggedId || draggedId === targetId) return;
+    setServices(prev => {
+      const from = prev.findIndex(service => service.id === draggedId);
+      const to = prev.findIndex(service => service.id === targetId);
+      if (from < 0 || to < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next.map((service, index) => ({ ...service, displayOrder: index }));
+    });
+    setOrderDirty(true);
+  };
+
+  const finishDrag = () => {
+    setDraggedId(null);
   };
 
   const toggleStatusFilter = (filter: StatusFilter) => {
@@ -747,6 +954,8 @@ export default function App() {
     setStatusFilter("all");
     setActiveCategory("All");
   };
+
+  const visibleSelectedCount = filtered.filter(service => selectedIds.has(service.id)).length;
 
   const modalServiceObj = modalService === "new" ? null : modalService;
 
@@ -841,18 +1050,18 @@ export default function App() {
             {isDark ? <Sun size={13} /> : <Moon size={13} />}
           </button>
 
-          {/* Edit Dashboard */}
+          {/* Manage Dashboard */}
           <button
-            onClick={() => setEditMode(m => !m)}
+            onClick={() => setManageMode(m => !m)}
             className={clsx(
               "flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs border transition-colors flex-shrink-0",
-              editMode
+              manageMode
                 ? "bg-primary/15 border-primary/40 text-primary"
                 : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
             )}
           >
             <Edit2 size={11} />
-            <span className="hidden sm:inline">{editMode ? "Done" : "Edit"}</span>
+            <span className="hidden sm:inline">{manageMode ? "Done" : "Manage"}</span>
           </button>
 
           {/* Add Service */}
@@ -997,6 +1206,41 @@ export default function App() {
         </div>
 
         {/* ─── Service Grid / List ─────────────────────────────────────────────── */}
+        {manageMode && (
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <GripVertical size={13} />
+              <span className="font-mono">{selectedIds.size} selected</span>
+              {visibleSelectedCount > 0 && (
+                <span className="font-mono opacity-70">({visibleSelectedCount} visible)</span>
+              )}
+            </div>
+            <div className="flex-1" />
+            <button
+              onClick={selectVisible}
+              disabled={filtered.length === 0}
+              className="h-7 px-2.5 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Select Visible
+            </button>
+            <button
+              onClick={() => setSelectedIds(new Set())}
+              disabled={selectedIds.size === 0}
+              className="h-7 px-2.5 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              Clear
+            </button>
+            <button
+              onClick={requestBulkDelete}
+              disabled={selectedIds.size === 0}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-red-400/25 bg-red-400/10 text-xs text-red-300 hover:bg-red-400/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Trash2 size={12} />
+              Delete Selected
+            </button>
+          </div>
+        )}
+
         {filtered.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
             <Server size={28} className="mb-3 opacity-20" strokeWidth={1.5} />
@@ -1006,7 +1250,18 @@ export default function App() {
         ) : viewMode === "list" ? (
           <div className="space-y-1.5">
             {filtered.map(s => (
-              <ServiceRow key={s.id} service={s} onEdit={svc => setModalService(svc)} isChecking={checkingIds.has(s.id)} />
+              <ServiceRow
+                key={s.id}
+                service={s}
+                onEdit={svc => setModalService(svc)}
+                isChecking={checkingIds.has(s.id)}
+                manageMode={manageMode}
+                selected={selectedIds.has(s.id)}
+                onSelect={toggleSelected}
+                onDragStart={setDraggedId}
+                onDragOver={reorderService}
+                onDrop={finishDrag}
+              />
             ))}
           </div>
         ) : grouped ? (
@@ -1017,12 +1272,23 @@ export default function App() {
                 <GroupHeader category={cat} count={catServices.length} />
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
                   {catServices.map(s => (
-                    <ServiceCard key={s.id} service={s} onEdit={svc => setModalService(svc)} editMode={editMode} isChecking={checkingIds.has(s.id)} />
+                    <ServiceCard
+                      key={s.id}
+                      service={s}
+                      onEdit={svc => setModalService(svc)}
+                      manageMode={manageMode}
+                      isChecking={checkingIds.has(s.id)}
+                      selected={selectedIds.has(s.id)}
+                      onSelect={toggleSelected}
+                      onDragStart={setDraggedId}
+                      onDragOver={reorderService}
+                      onDrop={finishDrag}
+                    />
                   ))}
                 </div>
               </div>
             ))}
-            {editMode && (
+            {manageMode && (
               <button
                 onClick={() => setModalService("new")}
                 className="flex items-center gap-2 h-9 px-4 rounded-lg border-2 border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary text-xs font-medium transition-colors mt-2"
@@ -1036,9 +1302,20 @@ export default function App() {
           /* Flat grid */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
             {filtered.map(s => (
-              <ServiceCard key={s.id} service={s} onEdit={svc => setModalService(svc)} editMode={editMode} isChecking={checkingIds.has(s.id)} />
+              <ServiceCard
+                key={s.id}
+                service={s}
+                onEdit={svc => setModalService(svc)}
+                manageMode={manageMode}
+                isChecking={checkingIds.has(s.id)}
+                selected={selectedIds.has(s.id)}
+                onSelect={toggleSelected}
+                onDragStart={setDraggedId}
+                onDragOver={reorderService}
+                onDrop={finishDrag}
+              />
             ))}
-            {editMode && (
+            {manageMode && (
               <button
                 onClick={() => setModalService("new")}
                 className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg min-h-[164px] text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
@@ -1056,8 +1333,16 @@ export default function App() {
         <EditModal
           service={modalServiceObj}
           onSave={handleSave}
-          onDelete={handleDelete}
+          onDelete={requestSingleDelete}
           onClose={() => setModalService(null)}
+        />
+      )}
+
+      {confirmAction && (
+        <DeleteConfirmModal
+          action={confirmAction}
+          onCancel={() => setConfirmAction(null)}
+          onConfirm={confirmDelete}
         />
       )}
 
