@@ -15,6 +15,7 @@ type Category = "AI" | "Infrastructure" | "Media" | "Network" | "Security";
 type FilterCategory = "All" | Category;
 type CheckType = "HTTP" | "Ping" | "TCP" | "None";
 type ViewMode = "grid" | "list";
+type StatusFilter = "all" | "online" | "offline" | "degraded";
 
 interface Service {
   id: string;
@@ -319,14 +320,26 @@ function ServiceRow({ service, onEdit, isChecking }: { service: Service; onEdit:
 
 // ─── Stat Card ───────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, icon, accent }: {
+function StatCard({ label, value, icon, accent, active = false, onClick, title }: {
   label: string;
   value: number;
   icon: React.ReactNode;
   accent: string;
+  active?: boolean;
+  onClick?: () => void;
+  title?: string;
 }) {
+  const Component = onClick ? "button" : "div";
   return (
-    <div className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-3">
+    <Component
+      onClick={onClick}
+      title={title}
+      className={clsx(
+        "flex items-center gap-3 bg-card border rounded-lg px-4 py-3 text-left transition-all",
+        onClick && "cursor-pointer hover:bg-muted/20 hover:border-white/12 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+        active ? "border-primary/45 ring-1 ring-primary/25 bg-primary/5" : "border-border"
+      )}
+    >
       <div className={clsx("size-9 rounded-md flex items-center justify-center flex-shrink-0", accent)}>
         {icon}
       </div>
@@ -334,7 +347,7 @@ function StatCard({ label, value, icon, accent }: {
         <p className="text-xl font-semibold text-foreground leading-none tabular-nums">{value}</p>
         <p className="text-[11px] text-muted-foreground mt-0.5 leading-none">{label}</p>
       </div>
-    </div>
+    </Component>
   );
 }
 
@@ -600,6 +613,7 @@ export default function App() {
   const [isDark, setIsDark] = useState(true);
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<FilterCategory>("All");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [services, setServices] = useState<Service[]>([]);
   const [modalService, setModalService] = useState<Service | "new" | null>(null);
   const [editMode, setEditMode] = useState(false);
@@ -686,12 +700,17 @@ export default function App() {
   // Filter
   const filtered = services.filter(s => {
     const matchCat = activeCategory === "All" || s.category === activeCategory;
+    const matchStatus =
+      statusFilter === "all" ||
+      s.status === statusFilter ||
+      (statusFilter === "degraded" && (s.status === "slow" || s.status === "unknown"));
     const q = search.toLowerCase();
     const matchSearch = !q ||
       s.name.toLowerCase().includes(q) ||
       s.description.toLowerCase().includes(q) ||
-      s.url.toLowerCase().includes(q);
-    return matchCat && matchSearch;
+      s.url.toLowerCase().includes(q) ||
+      s.healthUrl.toLowerCase().includes(q);
+    return matchCat && matchStatus && matchSearch;
   });
 
   // Stats
@@ -718,6 +737,15 @@ export default function App() {
   const handleDelete = async (id: string) => {
     await apiRequest<void>(`/services/${id}`, { method: "DELETE" });
     setServices(prev => prev.filter(s => s.id !== id));
+  };
+
+  const toggleStatusFilter = (filter: StatusFilter) => {
+    setStatusFilter(current => current === filter ? "all" : filter);
+  };
+
+  const showAllServices = () => {
+    setStatusFilter("all");
+    setActiveCategory("All");
   };
 
   const modalServiceObj = modalService === "new" ? null : modalService;
@@ -843,16 +871,67 @@ export default function App() {
 
         {/* Stats Row */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
-          <StatCard label="Total Services"  value={stats.total}      accent="bg-blue-400/10"    icon={<Server size={15} className="text-blue-400" strokeWidth={1.75} />} />
-          <StatCard label="Online"           value={stats.online}     accent="bg-emerald-400/10" icon={<Zap size={15} className="text-emerald-400" strokeWidth={1.75} />} />
-          <StatCard label="Offline"          value={stats.offline}    accent="bg-red-400/10"     icon={<AlertTriangle size={15} className="text-red-400" strokeWidth={1.75} />} />
-          <StatCard label="Slow / Unknown"   value={stats.degraded}   accent="bg-amber-400/10"   icon={<Clock size={15} className="text-amber-400" strokeWidth={1.75} />} />
-          <StatCard label="Categories"       value={stats.categories} accent="bg-purple-400/10"  icon={<Layers size={15} className="text-purple-400" strokeWidth={1.75} />} />
+          <StatCard
+            label="Total Services"
+            value={stats.total}
+            accent="bg-blue-400/10"
+            icon={<Server size={15} className="text-blue-400" strokeWidth={1.75} />}
+            active={statusFilter === "all" && activeCategory === "All"}
+            onClick={showAllServices}
+            title="Show all services"
+          />
+          <StatCard
+            label="Online"
+            value={stats.online}
+            accent="bg-emerald-400/10"
+            icon={<Zap size={15} className="text-emerald-400" strokeWidth={1.75} />}
+            active={statusFilter === "online"}
+            onClick={() => toggleStatusFilter("online")}
+            title="Filter online services"
+          />
+          <StatCard
+            label="Offline"
+            value={stats.offline}
+            accent="bg-red-400/10"
+            icon={<AlertTriangle size={15} className="text-red-400" strokeWidth={1.75} />}
+            active={statusFilter === "offline"}
+            onClick={() => toggleStatusFilter("offline")}
+            title="Filter offline services"
+          />
+          <StatCard
+            label="Slow / Unknown"
+            value={stats.degraded}
+            accent="bg-amber-400/10"
+            icon={<Clock size={15} className="text-amber-400" strokeWidth={1.75} />}
+            active={statusFilter === "degraded"}
+            onClick={() => toggleStatusFilter("degraded")}
+            title="Filter slow or unknown services"
+          />
+          <StatCard
+            label="Categories"
+            value={stats.categories}
+            accent="bg-purple-400/10"
+            icon={<Layers size={15} className="text-purple-400" strokeWidth={1.75} />}
+            active={grouped}
+            onClick={() => setGrouped(g => !g)}
+            title="Toggle category grouping"
+          />
         </div>
 
         {/* Filters row */}
         <div className="flex items-center gap-2 flex-wrap">
           <span className="text-[11px] text-muted-foreground uppercase tracking-wide font-medium mr-0.5">Filter</span>
+
+          {statusFilter !== "all" && (
+            <button
+              onClick={() => setStatusFilter("all")}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium border border-primary/30 bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
+              title="Clear status filter"
+            >
+              {statusFilter === "online" ? "Online" : statusFilter === "offline" ? "Offline" : "Slow / Unknown"}
+              <X size={11} />
+            </button>
+          )}
 
           {/* All */}
           <button
