@@ -100,10 +100,39 @@ function CategoryChip({ category }: { category: Category }) {
 
 // ─── Service Card ────────────────────────────────────────────────────────────
 
-function ServiceCard({ service, onEdit, editMode }: {
+function CheckingChip() {
+  return (
+    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border leading-none bg-blue-400/10 text-blue-300 border-blue-400/20">
+      <RefreshCw size={9} className="animate-spin" />
+      Checking
+    </span>
+  );
+}
+
+function formatLastChecked(service: Service, isChecking: boolean) {
+  if (isChecking) return "Checking now";
+  if (!service.statusCheckEnabled || service.checkType === "None") return "Checks disabled";
+  if (!service.lastCheckedAt) return "Not checked yet";
+
+  const checkedAt = new Date(service.lastCheckedAt);
+  const seconds = Math.max(0, Math.floor((Date.now() - checkedAt.getTime()) / 1000));
+  const response = service.responseTimeMs != null ? `, ${service.responseTimeMs}ms` : "";
+
+  if (seconds < 10) return `Checked just now${response}`;
+  if (seconds < 60) return `Checked ${seconds}s ago${response}`;
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `Checked ${minutes}m ago${response}`;
+
+  const hours = Math.floor(minutes / 60);
+  return `Checked ${hours}h ago${response}`;
+}
+
+function ServiceCard({ service, onEdit, editMode, isChecking }: {
   service: Service;
   onEdit: (s: Service) => void;
   editMode: boolean;
+  isChecking: boolean;
 }) {
   const [copied, setCopied] = useState(false);
   const Icon = ICON_MAP[service.icon] ?? Server;
@@ -130,10 +159,16 @@ function ServiceCard({ service, onEdit, editMode }: {
 
   return (
     <div className={clsx(
-      "group relative flex flex-col bg-card border rounded-lg p-3.5 transition-all duration-150 cursor-default",
+      "group relative overflow-hidden flex flex-col bg-card border rounded-lg p-3.5 transition-all duration-150 cursor-default",
       "hover:shadow-lg hover:shadow-black/25",
       editMode ? "border-primary/30 ring-1 ring-primary/20" : "border-border hover:border-white/10 dark:hover:border-white/10"
     )}>
+      {isChecking && (
+        <div className="absolute left-0 top-0 h-0.5 w-full bg-primary/20">
+          <div className="h-full w-1/3 animate-pulse bg-primary" />
+        </div>
+      )}
+
       {/* Header row */}
       <div className="flex items-start gap-2.5 mb-2.5">
         <div className="flex-shrink-0 size-8 rounded-md bg-muted flex items-center justify-center">
@@ -148,13 +183,17 @@ function ServiceCard({ service, onEdit, editMode }: {
       {/* Chips row */}
       <div className="flex items-center gap-1.5 mb-2.5">
         <CategoryChip category={service.category} />
-        <StatusChip status={service.status} />
+        {isChecking ? <CheckingChip /> : <StatusChip status={service.status} />}
         {!service.statusCheckEnabled && (
           <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border border-border text-muted-foreground/60 leading-none">
             No check
           </span>
         )}
       </div>
+
+      <p className="text-[10px] text-muted-foreground/70 font-mono mb-2.5 leading-none truncate">
+        {formatLastChecked(service, isChecking)}
+      </p>
 
       {/* URL */}
       <div className="flex items-center gap-1.5 mb-3 bg-muted/40 border border-border rounded px-2 py-1.5">
@@ -208,7 +247,7 @@ function ServiceCard({ service, onEdit, editMode }: {
 
 // ─── List Row ────────────────────────────────────────────────────────────────
 
-function ServiceRow({ service, onEdit }: { service: Service; onEdit: (s: Service) => void }) {
+function ServiceRow({ service, onEdit, isChecking }: { service: Service; onEdit: (s: Service) => void; isChecking: boolean }) {
   const [copied, setCopied] = useState(false);
   const Icon = ICON_MAP[service.icon] ?? Server;
   const hasServiceUrl = service.url.trim().length > 0;
@@ -222,7 +261,8 @@ function ServiceRow({ service, onEdit }: { service: Service; onEdit: (s: Service
   };
 
   return (
-    <div className="flex items-center gap-3 px-4 py-2.5 bg-card border border-border rounded-lg hover:border-white/10 transition-all group">
+    <div className="relative overflow-hidden flex items-center gap-3 px-4 py-2.5 bg-card border border-border rounded-lg hover:border-white/10 transition-all group">
+      {isChecking && <div className="absolute left-0 top-0 h-0.5 w-full bg-primary/40" />}
       <div className="size-7 rounded bg-muted flex items-center justify-center flex-shrink-0">
         <Icon size={13} className="text-muted-foreground" strokeWidth={1.75} />
       </div>
@@ -233,7 +273,10 @@ function ServiceRow({ service, onEdit }: { service: Service; onEdit: (s: Service
         <p className="text-xs text-muted-foreground truncate">{service.description}</p>
       </div>
       <CategoryChip category={service.category} />
-      <StatusChip status={service.status} />
+      {isChecking ? <CheckingChip /> : <StatusChip status={service.status} />}
+      <p className="text-[10px] text-muted-foreground/70 font-mono w-36 truncate hidden xl:block">
+        {formatLastChecked(service, isChecking)}
+      </p>
       <p className="text-[10px] font-mono text-muted-foreground w-52 truncate hidden lg:block">
         {hasServiceUrl ? service.url : "No service URL"}
       </p>
@@ -563,12 +606,46 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [grouped, setGrouped] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [checkingIds, setCheckingIds] = useState<Set<string>>(new Set());
+  const [isRefreshingAll, setIsRefreshingAll] = useState(false);
 
   const loadServices = async () => {
     try {
       setServices(await apiRequest<Service[]>("/services"));
     } catch (error) {
       console.error("Failed to load services", error);
+    }
+  };
+
+  const replaceService = (service: Service) => {
+    setServices(prev => {
+      const idx = prev.findIndex(s => s.id === service.id);
+      if (idx < 0) return [...prev, service];
+      const next = [...prev];
+      next[idx] = service;
+      return next;
+    });
+  };
+
+  const markChecking = (ids: string[], checking: boolean) => {
+    setCheckingIds(prev => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (checking) next.add(id);
+        else next.delete(id);
+      }
+      return next;
+    });
+  };
+
+  const checkService = async (id: string) => {
+    markChecking([id], true);
+    try {
+      replaceService(await apiRequest<Service>(`/services/${id}/check`, { method: "POST" }));
+    } catch (error) {
+      console.error("Failed to check service", error);
+    } finally {
+      markChecking([id], false);
     }
   };
 
@@ -587,16 +664,24 @@ export default function App() {
   useEffect(() => {
     loadServices();
     const refreshStatuses = async () => {
+      if (services.length === 0) return;
+      setIsRefreshingAll(true);
+      const ids = services.map(s => s.id);
+      markChecking(ids, true);
       try {
-        setServices(await apiRequest<Service[]>("/services/check-all", { method: "POST" }));
+        const checked = await apiRequest<Service[]>("/services/check-all", { method: "POST" });
+        setServices(checked);
       } catch (error) {
         console.error("Failed to refresh service statuses", error);
+      } finally {
+        setIsRefreshingAll(false);
+        markChecking(ids, false);
       }
     };
     refreshStatuses();
     const t = setInterval(refreshStatuses, 60000);
     return () => clearInterval(t);
-  }, []);
+  }, [services.length]);
 
   // Filter
   const filtered = services.filter(s => {
@@ -624,13 +709,10 @@ export default function App() {
       ? await apiRequest<Service>(`/services/${updated.id}`, { method: "PATCH", body: JSON.stringify(updated) })
       : await apiRequest<Service>("/services", { method: "POST", body: JSON.stringify(updated) });
 
-    setServices(prev => {
-      const idx = prev.findIndex(s => s.id === saved.id);
-      if (idx < 0) return [...prev, saved];
-      const next = [...prev];
-      next[idx] = saved;
-      return next;
-    });
+    replaceService(saved);
+    if (saved.statusCheckEnabled && saved.checkType !== "None") {
+      checkService(saved.id);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -824,6 +906,12 @@ export default function App() {
           )}
 
           <p className="text-[11px] text-muted-foreground font-mono">
+            {isRefreshingAll && (
+              <span className="inline-flex items-center gap-1 mr-3 text-primary">
+                <RefreshCw size={10} className="animate-spin" />
+                Refreshing statuses
+              </span>
+            )}
             {filtered.length} service{filtered.length !== 1 ? "s" : ""}
             {search && <span className="opacity-70"> • "{search}"</span>}
           </p>
@@ -839,7 +927,7 @@ export default function App() {
         ) : viewMode === "list" ? (
           <div className="space-y-1.5">
             {filtered.map(s => (
-              <ServiceRow key={s.id} service={s} onEdit={svc => setModalService(svc)} />
+              <ServiceRow key={s.id} service={s} onEdit={svc => setModalService(svc)} isChecking={checkingIds.has(s.id)} />
             ))}
           </div>
         ) : grouped ? (
@@ -850,7 +938,7 @@ export default function App() {
                 <GroupHeader category={cat} count={catServices.length} />
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
                   {catServices.map(s => (
-                    <ServiceCard key={s.id} service={s} onEdit={svc => setModalService(svc)} editMode={editMode} />
+                    <ServiceCard key={s.id} service={s} onEdit={svc => setModalService(svc)} editMode={editMode} isChecking={checkingIds.has(s.id)} />
                   ))}
                 </div>
               </div>
@@ -869,7 +957,7 @@ export default function App() {
           /* Flat grid */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
             {filtered.map(s => (
-              <ServiceCard key={s.id} service={s} onEdit={svc => setModalService(svc)} editMode={editMode} />
+              <ServiceCard key={s.id} service={s} onEdit={svc => setModalService(svc)} editMode={editMode} isChecking={checkingIds.has(s.id)} />
             ))}
             {editMode && (
               <button
