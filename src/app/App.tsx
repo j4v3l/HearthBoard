@@ -107,9 +107,11 @@ function ServiceCard({ service, onEdit, editMode }: {
 }) {
   const [copied, setCopied] = useState(false);
   const Icon = ICON_MAP[service.icon] ?? Server;
+  const hasServiceUrl = service.url.trim().length > 0;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!hasServiceUrl) return;
     navigator.clipboard.writeText(service.url).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -117,6 +119,7 @@ function ServiceCard({ service, onEdit, editMode }: {
 
   const handleOpen = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!hasServiceUrl) return;
     window.open(service.url, "_blank", "noopener,noreferrer");
   };
 
@@ -156,14 +159,22 @@ function ServiceCard({ service, onEdit, editMode }: {
       {/* URL */}
       <div className="flex items-center gap-1.5 mb-3 bg-muted/40 border border-border rounded px-2 py-1.5">
         <Globe size={10} className="text-muted-foreground/60 flex-shrink-0" />
-        <p className="text-[10px] font-mono text-muted-foreground truncate leading-none">{service.url}</p>
+        <p className="text-[10px] font-mono text-muted-foreground truncate leading-none">
+          {hasServiceUrl ? service.url : "No service URL"}
+        </p>
       </div>
 
       {/* Actions */}
       <div className="flex items-center gap-1.5 mt-auto">
         <button
           onClick={handleOpen}
-          className="flex-1 flex items-center justify-center gap-1.5 h-7 px-2 rounded bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-medium transition-colors"
+          disabled={!hasServiceUrl}
+          className={clsx(
+            "flex-1 flex items-center justify-center gap-1.5 h-7 px-2 rounded text-[11px] font-medium transition-colors",
+            hasServiceUrl
+              ? "bg-primary/10 hover:bg-primary/20 text-primary"
+              : "bg-muted/30 text-muted-foreground/40 cursor-not-allowed"
+          )}
         >
           <ExternalLink size={11} strokeWidth={2} />
           Open
@@ -171,7 +182,13 @@ function ServiceCard({ service, onEdit, editMode }: {
         <button
           onClick={handleCopy}
           title="Copy URL"
-          className="size-7 flex items-center justify-center rounded border border-border hover:border-white/12 hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors"
+          disabled={!hasServiceUrl}
+          className={clsx(
+            "size-7 flex items-center justify-center rounded border border-border transition-colors",
+            hasServiceUrl
+              ? "hover:border-white/12 hover:bg-white/5 text-muted-foreground hover:text-foreground"
+              : "text-muted-foreground/30 cursor-not-allowed"
+          )}
         >
           {copied
             ? <Check size={12} className="text-emerald-400" />
@@ -194,9 +211,11 @@ function ServiceCard({ service, onEdit, editMode }: {
 function ServiceRow({ service, onEdit }: { service: Service; onEdit: (s: Service) => void }) {
   const [copied, setCopied] = useState(false);
   const Icon = ICON_MAP[service.icon] ?? Server;
+  const hasServiceUrl = service.url.trim().length > 0;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!hasServiceUrl) return;
     navigator.clipboard.writeText(service.url).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -215,18 +234,32 @@ function ServiceRow({ service, onEdit }: { service: Service; onEdit: (s: Service
       </div>
       <CategoryChip category={service.category} />
       <StatusChip status={service.status} />
-      <p className="text-[10px] font-mono text-muted-foreground w-52 truncate hidden lg:block">{service.url}</p>
+      <p className="text-[10px] font-mono text-muted-foreground w-52 truncate hidden lg:block">
+        {hasServiceUrl ? service.url : "No service URL"}
+      </p>
       <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
         <button
-          onClick={() => window.open(service.url, "_blank", "noopener,noreferrer")}
-          className="flex items-center gap-1 h-6 px-2 rounded bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-medium transition-colors"
+          onClick={() => hasServiceUrl && window.open(service.url, "_blank", "noopener,noreferrer")}
+          disabled={!hasServiceUrl}
+          className={clsx(
+            "flex items-center gap-1 h-6 px-2 rounded text-[11px] font-medium transition-colors",
+            hasServiceUrl
+              ? "bg-primary/10 hover:bg-primary/20 text-primary"
+              : "bg-muted/30 text-muted-foreground/40 cursor-not-allowed"
+          )}
         >
           <ExternalLink size={10} strokeWidth={2} />
           Open
         </button>
         <button
           onClick={handleCopy}
-          className="size-6 flex items-center justify-center rounded border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+          disabled={!hasServiceUrl}
+          className={clsx(
+            "size-6 flex items-center justify-center rounded border border-border transition-colors",
+            hasServiceUrl
+              ? "hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+              : "text-muted-foreground/30 cursor-not-allowed"
+          )}
         >
           {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
         </button>
@@ -405,7 +438,7 @@ function EditModal({ service, onSave, onDelete, onClose }: {
               className={clsx(inputCls, "font-mono")}
               value={form.url}
               onChange={e => set("url", e.target.value)}
-              placeholder="https://service.lan:8080"
+              placeholder="Optional for non-web devices"
             />
           </div>
 
@@ -417,7 +450,13 @@ function EditModal({ service, onSave, onDelete, onClose }: {
                 className={clsx(inputCls, "font-mono")}
                 value={form.healthUrl}
                 onChange={e => set("healthUrl", e.target.value)}
-                placeholder="https://service.lan/health"
+                placeholder={
+                  form.checkType === "Ping"
+                    ? "192.168.0.102 or eap610.lan"
+                    : form.checkType === "TCP"
+                      ? "192.168.0.50:22"
+                      : "https://service.lan/health"
+                }
               />
             </div>
             <div>

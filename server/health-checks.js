@@ -1,6 +1,7 @@
 import http from "node:http";
 import https from "node:https";
 import net from "node:net";
+import os from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 
@@ -18,7 +19,7 @@ function elapsedStatus(startedAt) {
   };
 }
 
-function parseTarget(service) {
+function parseUrlTarget(service) {
   const target = service.healthUrl || service.url;
   try {
     return new URL(target);
@@ -27,8 +28,25 @@ function parseTarget(service) {
   }
 }
 
+function defaultPortForProtocol(protocol) {
+  if (protocol === "https:") return 443;
+  if (protocol === "http:") return 80;
+  return null;
+}
+
+function parseHostTarget(service) {
+  const target = service.healthUrl || service.url;
+  const url = parseUrlTarget(service);
+  if (url) return { host: url.hostname, port: url.port ? Number(url.port) : defaultPortForProtocol(url.protocol) };
+
+  const tcpMatch = target.match(/^(.+):(\d{1,5})$/);
+  if (tcpMatch) return { host: tcpMatch[1], port: Number(tcpMatch[2]) };
+
+  return { host: target, port: null };
+}
+
 export async function checkHttp(service) {
-  const target = parseTarget(service);
+  const target = parseUrlTarget(service);
   if (!target || !["http:", "https:"].includes(target.protocol)) {
     return { status: "offline", responseTimeMs: null };
   }
@@ -59,9 +77,9 @@ export async function checkHttp(service) {
 }
 
 export async function checkTcp(service) {
-  const target = parseTarget(service);
-  const host = target?.hostname;
-  const port = Number(target?.port);
+  const target = parseHostTarget(service);
+  const host = target.host;
+  const port = target.port;
   if (!host || !port) return { status: "offline", responseTimeMs: null };
 
   const startedAt = Date.now();
@@ -81,15 +99,18 @@ export async function checkTcp(service) {
 }
 
 export async function checkPing(service) {
-  const target = parseTarget(service);
-  const host = target?.hostname;
+  const target = parseHostTarget(service);
+  const host = target.host;
   if (!host) return { status: "offline", responseTimeMs: null };
 
   const startedAt = Date.now();
   const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+  const args = os.platform() === "win32"
+    ? ["-n", "1", "-w", String(timeoutMs), host]
+    : ["-c", "1", "-W", String(timeoutSeconds), host];
 
   try {
-    await execFileAsync("ping", ["-c", "1", "-W", String(timeoutSeconds), host], { timeout: timeoutMs + 1000 });
+    await execFileAsync("ping", args, { timeout: timeoutMs + 1000 });
     return elapsedStatus(startedAt);
   } catch {
     return { status: "offline", responseTimeMs: Date.now() - startedAt };

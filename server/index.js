@@ -42,6 +42,47 @@ function badRequest(message) {
   return error;
 }
 
+function isValidUrl(value) {
+  try {
+    new URL(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function defaultPortForProtocol(protocol) {
+  if (protocol === "https:") return 443;
+  if (protocol === "http:") return 80;
+  return null;
+}
+
+function isValidHost(value) {
+  return /^[a-zA-Z0-9]([a-zA-Z0-9.-]{0,251}[a-zA-Z0-9])?$/.test(value) && !value.includes("..");
+}
+
+function isValidIp(value) {
+  return /^(25[0-5]|2[0-4]\d|1?\d?\d)(\.(25[0-5]|2[0-4]\d|1?\d?\d)){3}$/.test(value);
+}
+
+function isValidPingTarget(value) {
+  if (!value) return false;
+  if (isValidUrl(value)) return true;
+  return isValidIp(value) || isValidHost(value);
+}
+
+function isValidTcpTarget(value) {
+  if (!value) return false;
+  if (isValidUrl(value)) {
+    const url = new URL(value);
+    return Boolean(url.port || defaultPortForProtocol(url.protocol));
+  }
+  const match = value.match(/^(.+):(\d{1,5})$/);
+  if (!match) return false;
+  const port = Number(match[2]);
+  return port > 0 && port <= 65535 && (isValidIp(match[1]) || isValidHost(match[1]));
+}
+
 function normalizeService(input, existing = {}) {
   const service = {
     id: existing.id ?? randomUUID(),
@@ -59,23 +100,25 @@ function normalizeService(input, existing = {}) {
   };
 
   if (!service.name) throw badRequest("Service name is required");
-  if (!service.url) throw badRequest("Service URL is required");
   if (!categories.has(service.category)) throw badRequest("Invalid category");
   if (!checkTypes.has(service.checkType)) throw badRequest("Invalid check type");
   if (!statuses.has(service.status)) throw badRequest("Invalid status");
 
-  try {
-    new URL(service.url);
-  } catch {
-    throw badRequest("Service URL must be a valid URL");
+  if (service.url && !isValidUrl(service.url)) {
+    throw badRequest("Service URL must be a valid URL when provided");
   }
 
-  if (service.healthUrl) {
-    try {
-      new URL(service.healthUrl);
-    } catch {
-      throw badRequest("Health URL must be a valid URL");
-    }
+  const checkTarget = service.healthUrl || service.url;
+  if (service.checkType === "HTTP" && !isValidUrl(checkTarget)) {
+    throw badRequest("HTTP checks require a full health check URL or service URL");
+  }
+
+  if (service.checkType === "Ping" && !isValidPingTarget(checkTarget)) {
+    throw badRequest("Ping checks require an IP address, hostname, FQDN, or URL target");
+  }
+
+  if (service.checkType === "TCP" && !isValidTcpTarget(checkTarget)) {
+    throw badRequest("TCP checks require a host:port target or URL with a port");
   }
 
   return service;
