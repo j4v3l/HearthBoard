@@ -1,0 +1,868 @@
+import { useState, useEffect } from "react";
+import { clsx } from "clsx";
+import {
+  Server, Box, Play, Film, Shield, Globe, Lock, Camera, Cpu,
+  MessageSquare, BarChart2, Activity, Cloud, ShieldCheck, GitBranch, Wifi,
+  Search, Moon, Sun, Edit2, Plus, X, Copy, ExternalLink, Check, Layers,
+  Database, Terminal, Monitor, HardDrive, AlertTriangle, Clock, Zap,
+  LayoutGrid, List, RefreshCw, Network,
+} from "lucide-react";
+
+// ─── Types ──────────────────────────────────────────────────────────────────
+
+type Status = "online" | "offline" | "slow" | "unknown";
+type Category = "AI" | "Infrastructure" | "Media" | "Network" | "Security";
+type FilterCategory = "All" | Category;
+type CheckType = "HTTP" | "Ping" | "TCP" | "None";
+type ViewMode = "grid" | "list";
+
+interface Service {
+  id: string;
+  name: string;
+  description: string;
+  category: Category;
+  url: string;
+  healthUrl: string;
+  checkType: CheckType;
+  icon: string;
+  status: Status;
+  statusCheckEnabled: boolean;
+  lastCheckedAt?: string | null;
+  responseTimeMs?: number | null;
+}
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+
+const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>> = {
+  Server, Box, Play, Film, Shield, Globe, Lock, Camera, Cpu, MessageSquare,
+  BarChart2, Activity, Cloud, ShieldCheck, GitBranch, Wifi, Database, Terminal,
+  Monitor, HardDrive, Layers, Network, RefreshCw,
+};
+
+const STATUS_CFG: Record<Status, { label: string; dot: string; chip: string }> = {
+  online:  { label: "Online",  dot: "bg-emerald-400",                   chip: "bg-emerald-400/10 text-emerald-400 border-emerald-400/20" },
+  offline: { label: "Offline", dot: "bg-red-400",                       chip: "bg-red-400/10 text-red-400 border-red-400/20" },
+  slow:    { label: "Slow",    dot: "bg-amber-400",                      chip: "bg-amber-400/10 text-amber-400 border-amber-400/20" },
+  unknown: { label: "Unknown", dot: "bg-zinc-500",                       chip: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" },
+};
+
+const CAT_CFG: Record<Category, { chip: string; active: string; hover: string }> = {
+  AI:             { chip: "bg-purple-400/10 text-purple-300 border-purple-400/20",  active: "bg-purple-400/15 text-purple-300 border-purple-400/30", hover: "hover:text-purple-300" },
+  Infrastructure: { chip: "bg-blue-400/10 text-blue-300 border-blue-400/20",        active: "bg-blue-400/15 text-blue-300 border-blue-400/30",       hover: "hover:text-blue-300" },
+  Media:          { chip: "bg-orange-400/10 text-orange-300 border-orange-400/20",  active: "bg-orange-400/15 text-orange-300 border-orange-400/30", hover: "hover:text-orange-300" },
+  Network:        { chip: "bg-cyan-400/10 text-cyan-300 border-cyan-400/20",        active: "bg-cyan-400/15 text-cyan-300 border-cyan-400/30",       hover: "hover:text-cyan-300" },
+  Security:       { chip: "bg-rose-400/10 text-rose-300 border-rose-400/20",        active: "bg-rose-400/15 text-rose-300 border-rose-400/30",       hover: "hover:text-rose-300" },
+};
+
+const ALL_CATEGORIES: Category[] = ["AI", "Infrastructure", "Media", "Network", "Security"];
+
+const API_BASE = "/api";
+
+async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers = new Headers(options?.headers);
+  if (options?.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers,
+    ...options,
+  });
+
+  if (!res.ok) {
+    const message = await res.text().catch(() => "Request failed");
+    throw new Error(message || "Request failed");
+  }
+
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+// ─── Sub-components ──────────────────────────────────────────────────────────
+
+function StatusChip({ status }: { status: Status }) {
+  const cfg = STATUS_CFG[status];
+  return (
+    <span className={clsx("inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono border leading-none", cfg.chip)}>
+      <span className={clsx("size-1.5 rounded-full flex-shrink-0", cfg.dot, status === "online" && "animate-pulse")} />
+      {cfg.label}
+    </span>
+  );
+}
+
+function CategoryChip({ category }: { category: Category }) {
+  return (
+    <span className={clsx("inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border font-medium leading-none", CAT_CFG[category].chip)}>
+      {category}
+    </span>
+  );
+}
+
+// ─── Service Card ────────────────────────────────────────────────────────────
+
+function ServiceCard({ service, onEdit, editMode }: {
+  service: Service;
+  onEdit: (s: Service) => void;
+  editMode: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+  const Icon = ICON_MAP[service.icon] ?? Server;
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(service.url).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleOpen = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    window.open(service.url, "_blank", "noopener,noreferrer");
+  };
+
+  const handleEdit = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onEdit(service);
+  };
+
+  return (
+    <div className={clsx(
+      "group relative flex flex-col bg-card border rounded-lg p-3.5 transition-all duration-150 cursor-default",
+      "hover:shadow-lg hover:shadow-black/25",
+      editMode ? "border-primary/30 ring-1 ring-primary/20" : "border-border hover:border-white/10 dark:hover:border-white/10"
+    )}>
+      {/* Header row */}
+      <div className="flex items-start gap-2.5 mb-2.5">
+        <div className="flex-shrink-0 size-8 rounded-md bg-muted flex items-center justify-center">
+          <Icon size={15} className="text-muted-foreground" strokeWidth={1.75} />
+        </div>
+        <div className="flex-1 min-w-0 pt-0.5">
+          <p className="text-sm font-medium text-foreground leading-none truncate">{service.name}</p>
+          <p className="text-[11px] text-muted-foreground mt-1 leading-none truncate">{service.description}</p>
+        </div>
+      </div>
+
+      {/* Chips row */}
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <CategoryChip category={service.category} />
+        <StatusChip status={service.status} />
+        {!service.statusCheckEnabled && (
+          <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] border border-border text-muted-foreground/60 leading-none">
+            No check
+          </span>
+        )}
+      </div>
+
+      {/* URL */}
+      <div className="flex items-center gap-1.5 mb-3 bg-muted/40 border border-border rounded px-2 py-1.5">
+        <Globe size={10} className="text-muted-foreground/60 flex-shrink-0" />
+        <p className="text-[10px] font-mono text-muted-foreground truncate leading-none">{service.url}</p>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1.5 mt-auto">
+        <button
+          onClick={handleOpen}
+          className="flex-1 flex items-center justify-center gap-1.5 h-7 px-2 rounded bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-medium transition-colors"
+        >
+          <ExternalLink size={11} strokeWidth={2} />
+          Open
+        </button>
+        <button
+          onClick={handleCopy}
+          title="Copy URL"
+          className="size-7 flex items-center justify-center rounded border border-border hover:border-white/12 hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {copied
+            ? <Check size={12} className="text-emerald-400" />
+            : <Copy size={12} />}
+        </button>
+        <button
+          onClick={handleEdit}
+          title="Edit service"
+          className="size-7 flex items-center justify-center rounded border border-border hover:border-white/12 hover:bg-white/5 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Edit2 size={12} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── List Row ────────────────────────────────────────────────────────────────
+
+function ServiceRow({ service, onEdit }: { service: Service; onEdit: (s: Service) => void }) {
+  const [copied, setCopied] = useState(false);
+  const Icon = ICON_MAP[service.icon] ?? Server;
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigator.clipboard.writeText(service.url).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 bg-card border border-border rounded-lg hover:border-white/10 transition-all group">
+      <div className="size-7 rounded bg-muted flex items-center justify-center flex-shrink-0">
+        <Icon size={13} className="text-muted-foreground" strokeWidth={1.75} />
+      </div>
+      <div className="w-40 min-w-0">
+        <p className="text-sm font-medium text-foreground truncate">{service.name}</p>
+      </div>
+      <div className="flex-1 min-w-0 hidden sm:block">
+        <p className="text-xs text-muted-foreground truncate">{service.description}</p>
+      </div>
+      <CategoryChip category={service.category} />
+      <StatusChip status={service.status} />
+      <p className="text-[10px] font-mono text-muted-foreground w-52 truncate hidden lg:block">{service.url}</p>
+      <div className="flex items-center gap-1.5 flex-shrink-0 ml-auto">
+        <button
+          onClick={() => window.open(service.url, "_blank", "noopener,noreferrer")}
+          className="flex items-center gap-1 h-6 px-2 rounded bg-primary/10 hover:bg-primary/20 text-primary text-[11px] font-medium transition-colors"
+        >
+          <ExternalLink size={10} strokeWidth={2} />
+          Open
+        </button>
+        <button
+          onClick={handleCopy}
+          className="size-6 flex items-center justify-center rounded border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+        </button>
+        <button
+          onClick={() => onEdit(service)}
+          className="size-6 flex items-center justify-center rounded border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <Edit2 size={11} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Stat Card ───────────────────────────────────────────────────────────────
+
+function StatCard({ label, value, icon, accent }: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+  accent: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-3">
+      <div className={clsx("size-9 rounded-md flex items-center justify-center flex-shrink-0", accent)}>
+        {icon}
+      </div>
+      <div>
+        <p className="text-xl font-semibold text-foreground leading-none tabular-nums">{value}</p>
+        <p className="text-[11px] text-muted-foreground mt-0.5 leading-none">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Toggle Switch ───────────────────────────────────────────────────────────
+
+function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      role="switch"
+      aria-checked={on}
+      className={clsx(
+        "relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none",
+        on ? "bg-primary" : "bg-muted"
+      )}
+    >
+      <span className={clsx(
+        "inline-block size-3.5 rounded-full bg-white shadow-sm transition-transform",
+        on ? "translate-x-[18px]" : "translate-x-[3px]"
+      )} />
+    </button>
+  );
+}
+
+// ─── Edit Modal ───────────────────────────────────────────────────────────────
+
+const EMPTY: Omit<Service, "id"> = {
+  name: "", description: "", category: "Infrastructure",
+  url: "", healthUrl: "", checkType: "HTTP",
+  icon: "Server", status: "unknown", statusCheckEnabled: true,
+};
+
+function EditModal({ service, onSave, onDelete, onClose }: {
+  service: Service | null;
+  onSave: (s: Service) => Promise<void> | void;
+  onDelete: (id: string) => Promise<void> | void;
+  onClose: () => void;
+}) {
+  const isNew = service === null;
+  const [form, setForm] = useState<Omit<Service, "id">>(service ? { ...service } : { ...EMPTY });
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+
+  const set = <K extends keyof typeof form>(k: K, v: typeof form[K]) =>
+    setForm(prev => ({ ...prev, [k]: v }));
+
+  const handleSave = async () => {
+    if (!form.name.trim()) return;
+    await onSave({ ...form, id: service?.id ?? String(Date.now()) });
+    onClose();
+  };
+
+  const handleDelete = async () => {
+    if (!deleteConfirm) { setDeleteConfirm(true); return; }
+    if (service) { await onDelete(service.id); onClose(); }
+  };
+
+  const inputCls = "w-full bg-muted/40 border border-border rounded-md px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/50 focus:bg-muted/60 transition-colors";
+  const labelCls = "block text-[11px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wide";
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="relative z-10 w-full max-w-[480px] bg-card border border-border rounded-xl shadow-2xl shadow-black/40 max-h-[92vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="size-7 rounded-md bg-primary/15 flex items-center justify-center">
+              {isNew ? <Plus size={13} className="text-primary" /> : <Edit2 size={12} className="text-primary" />}
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground leading-none">
+                {isNew ? "Add Service" : `Edit — ${service.name}`}
+              </h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-none">
+                {isNew ? "Register a new self-hosted service" : "Update service configuration"}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="size-7 flex items-center justify-center rounded-md hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="px-5 py-4 space-y-4 overflow-y-auto flex-1">
+          {/* Name + Icon */}
+          <div className="grid grid-cols-[1fr_140px] gap-3">
+            <div>
+              <label className={labelCls}>Service Name *</label>
+              <input
+                className={inputCls}
+                value={form.name}
+                onChange={e => set("name", e.target.value)}
+                placeholder="e.g. Vaultwarden"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Icon</label>
+              <select
+                className={inputCls}
+                value={form.icon}
+                onChange={e => set("icon", e.target.value)}
+              >
+                {Object.keys(ICON_MAP).map(k => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className={labelCls}>Description</label>
+            <input
+              className={inputCls}
+              value={form.description}
+              onChange={e => set("description", e.target.value)}
+              placeholder="Short description of the service"
+            />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label className={labelCls}>Category</label>
+            <select
+              className={inputCls}
+              value={form.category}
+              onChange={e => set("category", e.target.value as Category)}
+            >
+              {ALL_CATEGORIES.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Service URL */}
+          <div>
+            <label className={labelCls}>Service URL</label>
+            <input
+              className={clsx(inputCls, "font-mono")}
+              value={form.url}
+              onChange={e => set("url", e.target.value)}
+              placeholder="https://service.lan:8080"
+            />
+          </div>
+
+          {/* Health Check URL + Type */}
+          <div className="grid grid-cols-[1fr_100px] gap-3">
+            <div>
+              <label className={labelCls}>Health Check URL</label>
+              <input
+                className={clsx(inputCls, "font-mono")}
+                value={form.healthUrl}
+                onChange={e => set("healthUrl", e.target.value)}
+                placeholder="https://service.lan/health"
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Check Type</label>
+              <select
+                className={inputCls}
+                value={form.checkType}
+                onChange={e => set("checkType", e.target.value as CheckType)}
+              >
+                {(["HTTP", "Ping", "TCP", "None"] as CheckType[]).map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Status monitoring toggle */}
+          <div className="flex items-center justify-between p-3 bg-muted/25 rounded-lg border border-border">
+            <div>
+              <p className="text-xs font-medium text-foreground">Status Monitoring</p>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Periodically check service health</p>
+            </div>
+            <Toggle on={form.statusCheckEnabled} onToggle={() => set("statusCheckEnabled", !form.statusCheckEnabled)} />
+          </div>
+
+          {/* Icon preview */}
+          {(() => {
+            const PreviewIcon = ICON_MAP[form.icon] ?? Server;
+            return (
+              <div className="flex items-center gap-3 p-3 bg-muted/20 rounded-lg border border-border border-dashed">
+                <div className="size-9 rounded-md bg-muted flex items-center justify-center">
+                  <PreviewIcon size={16} className="text-muted-foreground" strokeWidth={1.75} />
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <CategoryChip category={form.category} />
+                  <StatusChip status={form.status} />
+                </div>
+                <p className="text-xs font-medium text-foreground ml-1">{form.name || "Service Name"}</p>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between px-5 py-4 border-t border-border flex-shrink-0">
+          <div>
+            {!isNew && (
+              <button
+                onClick={handleDelete}
+                className={clsx(
+                  "text-xs px-2 py-1 rounded transition-colors",
+                  deleteConfirm
+                    ? "bg-red-500/20 text-red-400 border border-red-400/30"
+                    : "text-muted-foreground/60 hover:text-red-400 hover:bg-red-400/10"
+                )}
+              >
+                {deleteConfirm ? "Confirm delete" : "Delete"}
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={onClose}
+              className="h-7 px-3 text-xs rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              disabled={!form.name.trim()}
+              className="h-7 px-4 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+            >
+              {isNew ? "Add Service" : "Save Changes"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Category Group Header ────────────────────────────────────────────────────
+
+function GroupHeader({ category, count }: { category: Category; count: number }) {
+  const cfg = CAT_CFG[category];
+  return (
+    <div className="flex items-center gap-2 mt-2 mb-3">
+      <span className={clsx("text-xs font-semibold uppercase tracking-widest", cfg.chip.split(" ").find(c => c.startsWith("text-")))}>{category}</span>
+      <span className="text-[10px] text-muted-foreground font-mono">{count}</span>
+      <div className="flex-1 h-px bg-border" />
+    </div>
+  );
+}
+
+// ─── App ─────────────────────────────────────────────────────────────────────
+
+export default function App() {
+  const [isDark, setIsDark] = useState(true);
+  const [search, setSearch] = useState("");
+  const [activeCategory, setActiveCategory] = useState<FilterCategory>("All");
+  const [services, setServices] = useState<Service[]>([]);
+  const [modalService, setModalService] = useState<Service | "new" | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [grouped, setGrouped] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  const loadServices = async () => {
+    try {
+      setServices(await apiRequest<Service[]>("/services"));
+    } catch (error) {
+      console.error("Failed to load services", error);
+    }
+  };
+
+  // Dark mode
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", isDark);
+  }, [isDark]);
+
+  // Clock
+  useEffect(() => {
+    const t = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Services
+  useEffect(() => {
+    loadServices();
+    const refreshStatuses = async () => {
+      try {
+        setServices(await apiRequest<Service[]>("/services/check-all", { method: "POST" }));
+      } catch (error) {
+        console.error("Failed to refresh service statuses", error);
+      }
+    };
+    refreshStatuses();
+    const t = setInterval(refreshStatuses, 60000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Filter
+  const filtered = services.filter(s => {
+    const matchCat = activeCategory === "All" || s.category === activeCategory;
+    const q = search.toLowerCase();
+    const matchSearch = !q ||
+      s.name.toLowerCase().includes(q) ||
+      s.description.toLowerCase().includes(q) ||
+      s.url.toLowerCase().includes(q);
+    return matchCat && matchSearch;
+  });
+
+  // Stats
+  const stats = {
+    total:      services.length,
+    online:     services.filter(s => s.status === "online").length,
+    offline:    services.filter(s => s.status === "offline").length,
+    degraded:   services.filter(s => s.status === "slow" || s.status === "unknown").length,
+    categories: new Set(services.map(s => s.category)).size,
+  };
+
+  const handleSave = async (updated: Service) => {
+    const exists = services.some(s => s.id === updated.id);
+    const saved = exists
+      ? await apiRequest<Service>(`/services/${updated.id}`, { method: "PATCH", body: JSON.stringify(updated) })
+      : await apiRequest<Service>("/services", { method: "POST", body: JSON.stringify(updated) });
+
+    setServices(prev => {
+      const idx = prev.findIndex(s => s.id === saved.id);
+      if (idx < 0) return [...prev, saved];
+      const next = [...prev];
+      next[idx] = saved;
+      return next;
+    });
+  };
+
+  const handleDelete = async (id: string) => {
+    await apiRequest<void>(`/services/${id}`, { method: "DELETE" });
+    setServices(prev => prev.filter(s => s.id !== id));
+  };
+
+  const modalServiceObj = modalService === "new" ? null : modalService;
+
+  const dateStr = currentTime.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+  const timeStr = currentTime.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+
+  // Group filtered services by category
+  const groupedServices = ALL_CATEGORIES
+    .map(cat => ({ cat, services: filtered.filter(s => s.category === cat) }))
+    .filter(g => g.services.length > 0);
+
+  return (
+    <div className="min-h-screen bg-background text-foreground" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
+
+      {/* ─── Header ──────────────────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
+        <div className="max-w-screen-2xl mx-auto px-4 h-13 flex items-center gap-3" style={{ height: "52px" }}>
+
+          {/* Logo + Title */}
+          <div className="flex items-center gap-2 flex-shrink-0 mr-1">
+            <div className="size-7 rounded-md bg-primary/20 flex items-center justify-center">
+              <Server size={13} className="text-primary" strokeWidth={2} />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-foreground leading-none">Andre's Homelab</p>
+              <p className="text-[10px] text-muted-foreground leading-none mt-0.5 font-mono">Control Panel</p>
+            </div>
+          </div>
+
+          {/* Divider */}
+          <div className="h-5 w-px bg-border flex-shrink-0" />
+
+          {/* Search */}
+          <div className="flex-1 max-w-xs relative">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search services…"
+              className="w-full h-8 pl-8 pr-7 bg-muted/40 border border-border rounded-md text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/40 focus:bg-muted/60 transition-colors"
+            />
+            {search && (
+              <button
+                onClick={() => setSearch("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <X size={11} />
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Clock */}
+          <div className="text-right flex-shrink-0 hidden md:block">
+            <p className="text-[10px] text-muted-foreground font-mono leading-none">{dateStr}</p>
+            <p className="text-xs text-foreground font-mono leading-none mt-0.5 tabular-nums">{timeStr}</p>
+          </div>
+
+          <div className="h-5 w-px bg-border flex-shrink-0 hidden md:block" />
+
+          {/* View Mode */}
+          <div className="flex items-center border border-border rounded-md overflow-hidden flex-shrink-0">
+            <button
+              onClick={() => setViewMode("grid")}
+              className={clsx(
+                "size-7 flex items-center justify-center transition-colors",
+                viewMode === "grid" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+              )}
+              title="Grid view"
+            >
+              <LayoutGrid size={13} />
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={clsx(
+                "size-7 flex items-center justify-center border-l border-border transition-colors",
+                viewMode === "list" ? "bg-muted text-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+              )}
+              title="List view"
+            >
+              <List size={13} />
+            </button>
+          </div>
+
+          {/* Theme Toggle */}
+          <button
+            onClick={() => setIsDark(d => !d)}
+            className="size-7 flex items-center justify-center rounded-md border border-border hover:bg-muted/50 text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+            title={isDark ? "Light mode" : "Dark mode"}
+          >
+            {isDark ? <Sun size={13} /> : <Moon size={13} />}
+          </button>
+
+          {/* Edit Dashboard */}
+          <button
+            onClick={() => setEditMode(m => !m)}
+            className={clsx(
+              "flex items-center gap-1.5 h-7 px-2.5 rounded-md text-xs border transition-colors flex-shrink-0",
+              editMode
+                ? "bg-primary/15 border-primary/40 text-primary"
+                : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
+            )}
+          >
+            <Edit2 size={11} />
+            <span className="hidden sm:inline">{editMode ? "Done" : "Edit"}</span>
+          </button>
+
+          {/* Add Service */}
+          <button
+            onClick={() => setModalService("new")}
+            className="flex items-center gap-1.5 h-7 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors flex-shrink-0"
+          >
+            <Plus size={12} strokeWidth={2.5} />
+            <span className="hidden sm:inline">Add Service</span>
+          </button>
+        </div>
+      </header>
+
+      {/* ─── Main ────────────────────────────────────────────────────────────── */}
+      <main className="max-w-screen-2xl mx-auto px-4 py-4 space-y-4">
+
+        {/* Stats Row */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2.5">
+          <StatCard label="Total Services"  value={stats.total}      accent="bg-blue-400/10"    icon={<Server size={15} className="text-blue-400" strokeWidth={1.75} />} />
+          <StatCard label="Online"           value={stats.online}     accent="bg-emerald-400/10" icon={<Zap size={15} className="text-emerald-400" strokeWidth={1.75} />} />
+          <StatCard label="Offline"          value={stats.offline}    accent="bg-red-400/10"     icon={<AlertTriangle size={15} className="text-red-400" strokeWidth={1.75} />} />
+          <StatCard label="Slow / Unknown"   value={stats.degraded}   accent="bg-amber-400/10"   icon={<Clock size={15} className="text-amber-400" strokeWidth={1.75} />} />
+          <StatCard label="Categories"       value={stats.categories} accent="bg-purple-400/10"  icon={<Layers size={15} className="text-purple-400" strokeWidth={1.75} />} />
+        </div>
+
+        {/* Filters row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] text-muted-foreground uppercase tracking-wide font-medium mr-0.5">Filter</span>
+
+          {/* All */}
+          <button
+            onClick={() => setActiveCategory("All")}
+            className={clsx(
+              "h-7 px-2.5 rounded text-xs font-medium border transition-colors",
+              activeCategory === "All"
+                ? "bg-white/10 text-foreground border-white/20"
+                : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
+            )}
+          >
+            All
+            <span className="ml-1.5 text-[10px] opacity-55 font-mono">{services.length}</span>
+          </button>
+
+          {ALL_CATEGORIES.map(cat => {
+            const cfg = CAT_CFG[cat];
+            const count = services.filter(s => s.category === cat).length;
+            const isActive = activeCategory === cat;
+            return (
+              <button
+                key={cat}
+                onClick={() => setActiveCategory(cat)}
+                className={clsx(
+                  "h-7 px-2.5 rounded text-xs font-medium border transition-colors",
+                  isActive ? cfg.active : `border-border text-muted-foreground ${cfg.hover} hover:border-border`
+                )}
+              >
+                {cat}
+                <span className="ml-1.5 text-[10px] opacity-55 font-mono">{count}</span>
+              </button>
+            );
+          })}
+
+          <div className="flex-1" />
+
+          {/* Group toggle */}
+          {viewMode === "grid" && (
+            <button
+              onClick={() => setGrouped(g => !g)}
+              className={clsx(
+                "flex items-center gap-1.5 h-7 px-2.5 rounded text-xs border transition-colors",
+                grouped
+                  ? "bg-muted text-foreground border-border"
+                  : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
+              )}
+            >
+              <Layers size={11} />
+              {grouped ? "Ungrouped" : "Group"}
+            </button>
+          )}
+
+          <p className="text-[11px] text-muted-foreground font-mono">
+            {filtered.length} service{filtered.length !== 1 ? "s" : ""}
+            {search && <span className="opacity-70"> • "{search}"</span>}
+          </p>
+        </div>
+
+        {/* ─── Service Grid / List ─────────────────────────────────────────────── */}
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-muted-foreground">
+            <Server size={28} className="mb-3 opacity-20" strokeWidth={1.5} />
+            <p className="text-sm font-medium">No services found</p>
+            {search && <p className="text-xs mt-1 opacity-50">Try a different search term</p>}
+          </div>
+        ) : viewMode === "list" ? (
+          <div className="space-y-1.5">
+            {filtered.map(s => (
+              <ServiceRow key={s.id} service={s} onEdit={svc => setModalService(svc)} />
+            ))}
+          </div>
+        ) : grouped ? (
+          /* Grouped view */
+          <div className="space-y-2">
+            {groupedServices.map(({ cat, services: catServices }) => (
+              <div key={cat}>
+                <GroupHeader category={cat} count={catServices.length} />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+                  {catServices.map(s => (
+                    <ServiceCard key={s.id} service={s} onEdit={svc => setModalService(svc)} editMode={editMode} />
+                  ))}
+                </div>
+              </div>
+            ))}
+            {editMode && (
+              <button
+                onClick={() => setModalService("new")}
+                className="flex items-center gap-2 h-9 px-4 rounded-lg border-2 border-dashed border-border text-muted-foreground hover:border-primary/40 hover:text-primary text-xs font-medium transition-colors mt-2"
+              >
+                <Plus size={14} />
+                Add Service
+              </button>
+            )}
+          </div>
+        ) : (
+          /* Flat grid */
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+            {filtered.map(s => (
+              <ServiceCard key={s.id} service={s} onEdit={svc => setModalService(svc)} editMode={editMode} />
+            ))}
+            {editMode && (
+              <button
+                onClick={() => setModalService("new")}
+                className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg min-h-[164px] text-muted-foreground hover:border-primary/40 hover:text-primary transition-colors"
+              >
+                <Plus size={18} strokeWidth={1.5} />
+                <span className="text-xs font-medium">Add Service</span>
+              </button>
+            )}
+          </div>
+        )}
+      </main>
+
+      {/* ─── Modal ───────────────────────────────────────────────────────────── */}
+      {modalService !== null && (
+        <EditModal
+          service={modalServiceObj}
+          onSave={handleSave}
+          onDelete={handleDelete}
+          onClose={() => setModalService(null)}
+        />
+      )}
+
+      {/* Scrollbar suppression */}
+      <style>{`
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.18); }
+        * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.1) transparent; }
+      `}</style>
+    </div>
+  );
+}

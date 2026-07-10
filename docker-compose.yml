@@ -1,0 +1,22 @@
+services:
+  homelab-dashboard:
+    build: .
+    container_name: homelab-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_PATH: /data/homelab.db
+      HEALTH_TIMEOUT_MS: 5000
+      SLOW_THRESHOLD_MS: 1500
+      ALLOW_INSECURE_TLS: "true"
+    volumes:
+      - homelab-dashboard-data:/data
+    # Required only for ICMP Ping checks. HTTP and TCP checks work without it.
+    cap_add:
+      - NET_RAW
+
+volumes:
+  homelab-dashboard-data:
