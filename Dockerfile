@@ -13,7 +13,7 @@ ENV NODE_ENV=production
 ENV PORT=3000
 ENV DATABASE_PATH=/data/hearthboard.db
 
-ARG INSTALL_PING=true
+ARG INSTALL_PING=false
 RUN if [ "${INSTALL_PING}" = "true" ]; then \
   apt-get update \
   && apt-get install -y --no-install-recommends iputils-ping \

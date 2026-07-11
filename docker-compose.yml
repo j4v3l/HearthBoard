@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        INSTALL_PING: ${INSTALL_PING:-true}
+        INSTALL_PING: ${INSTALL_PING:-false}
     image: ${HEARTHBOARD_IMAGE:-hearthboard:local}
     container_name: ${HEARTHBOARD_CONTAINER_NAME:-hearthboard}
     restart: unless-stopped

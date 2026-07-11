@@ -1,5 +1,8 @@
 services:
   hearthboard:
     # Required only for ICMP Ping checks. HTTP and TCP checks work without it.
+    build:
+      args:
+        INSTALL_PING: "true"
     cap_add:
       - NET_RAW

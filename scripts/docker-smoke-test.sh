@@ -3,16 +3,17 @@ set -euo pipefail
 
 IMAGE_NAME="${IMAGE_NAME:-hearthboard:smoke-test}"
 CONTAINER_NAME="${CONTAINER_NAME:-hearthboard-smoke-test}"
-DATA_DIR="${DATA_DIR:-${TMPDIR:-/tmp}/hearthboard-smoke-test-data}"
+VOLUME_NAME="${VOLUME_NAME:-hearthboard-smoke-test-data}"
 HOST_PORT="${HOST_PORT:-3000}"
 BASE_URL="http://127.0.0.1:${HOST_PORT}"
 
 cleanup() {
   docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
-  rm -rf "${DATA_DIR}" >/dev/null 2>&1 || true
+  docker volume rm "${VOLUME_NAME}" >/dev/null 2>&1 || true
 }
 
 trap cleanup EXIT
+cleanup
 
 wait_for_endpoint() {
   local path="$1"
@@ -32,15 +33,14 @@ wait_for_endpoint() {
 }
 
 echo "Building image ${IMAGE_NAME}"
-docker build --build-arg INSTALL_PING="${INSTALL_PING:-true}" -t "${IMAGE_NAME}" .
+docker build --build-arg INSTALL_PING="${INSTALL_PING:-false}" -t "${IMAGE_NAME}" .
 
 echo "Starting container ${CONTAINER_NAME}"
-mkdir -p "${DATA_DIR}"
 docker run -d \
   --name "${CONTAINER_NAME}" \
   -p "${HOST_PORT}:3000" \
   -e ALLOW_INSECURE_TLS=false \
-  -v "${DATA_DIR}:/data" \
+  -v "${VOLUME_NAME}:/data" \
   "${IMAGE_NAME}" >/dev/null
 
 echo "Waiting for readiness probe"

@@ -46,7 +46,7 @@ Open `http://localhost:3000` (or the port set in `.env`).
 Ping checks require raw network capability. Enable it only when needed:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.icmp.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.icmp.yml up -d --build
 ```
 
 HTTP and TCP checks work without `NET_RAW`.

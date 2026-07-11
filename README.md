@@ -102,7 +102,7 @@ Docker requires `cap_add: NET_RAW` for ICMP ping checks. HTTP and TCP checks do 
 Enable Ping support with the optional ICMP overlay:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.icmp.yml up -d
+docker compose -f docker-compose.yml -f docker-compose.icmp.yml up -d --build
 ```
 
 ### TCP
