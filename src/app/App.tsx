@@ -9,7 +9,7 @@ import {
   Upload, Download, FileSpreadsheet,
 } from "lucide-react";
 
-// ─── Types ──────────────────────────────────────────────────────────────────
+// Types
 
 type Status = "online" | "offline" | "slow" | "unknown";
 type Category = "AI" | "Infrastructure" | "Media" | "Network" | "Security";
@@ -86,9 +86,39 @@ interface ImportSuccess {
   skipped: number;
 }
 
-// ─── Constants ───────────────────────────────────────────────────────────────
+// Constants
 
-const ICON_MAP: Record<string, React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>> = {
+type IconComponent = React.ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+
+function HearthboardIcon({ size = 24, className }: { size?: number; className?: string; strokeWidth?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 77 70"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      aria-hidden="true"
+    >
+      <rect x="3" y="8" width="14" height="14" rx="2.5" fill="currentColor" />
+      <rect x="22" y="8" width="14" height="14" rx="2.5" fill="currentColor" />
+      <rect x="41" y="8" width="14" height="14" rx="2.5" fill="currentColor" />
+      <rect x="60" y="8" width="14" height="14" rx="2.5" fill="currentColor" />
+      <rect x="3" y="27" width="14" height="14" rx="2.5" fill="currentColor" />
+      <rect x="60" y="27" width="14" height="14" rx="2.5" fill="currentColor" />
+      <rect x="3" y="46" width="14" height="14" rx="2.5" fill="currentColor" />
+      <rect x="60" y="46" width="14" height="14" rx="2.5" fill="currentColor" />
+      <rect x="23.5" y="28.5" width="11" height="11" rx="1.5" fill="currentColor" />
+      <rect x="42.5" y="28.5" width="11" height="11" rx="1.5" fill="currentColor" />
+      <rect x="23.5" y="47.5" width="11" height="11" rx="1.5" fill="currentColor" />
+      <rect x="42.5" y="47.5" width="11" height="11" rx="1.5" fill="currentColor" />
+    </svg>
+  );
+}
+
+const ICON_MAP: Record<string, IconComponent> = {
+  Hearthboard: HearthboardIcon,
   Server, Box, Play, Film, Shield, Globe, Lock, Camera, Cpu, MessageSquare,
   BarChart2, Activity, Cloud, ShieldCheck, GitBranch, Wifi, Database, Terminal,
   Monitor, HardDrive, Layers, Network, RefreshCw,
@@ -114,7 +144,7 @@ const ALL_CATEGORIES: Category[] = ["AI", "Infrastructure", "Media", "Network", 
 const DEFAULT_SETTINGS: DashboardSettings = {
   dashboardName: "Hearthboard",
   dashboardSubtitle: "Service Monitor",
-  dashboardIcon: "Server",
+  dashboardIcon: "Hearthboard",
 };
 
 const CSV_COLUMNS = ["name", "description", "category", "url", "healthUrl", "checkType", "icon", "statusCheckEnabled"];
@@ -147,6 +177,17 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (res.status === 204) return undefined as T;
   return res.json();
+}
+
+function cleanServices(value: unknown): Service[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((service): service is Service =>
+    Boolean(service)
+    && typeof service === "object"
+    && typeof (service as Service).id === "string"
+    && typeof (service as Service).status === "string"
+    && (service as Service).status in STATUS_CFG
+  );
 }
 
 function escapeCsvCell(value: unknown) {
@@ -340,7 +381,7 @@ function downloadTextFile(fileName: string, text: string, type = "text/csv;chars
   URL.revokeObjectURL(url);
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// Sub-components
 
 function StatusChip({ status }: { status: Status }) {
   const cfg = STATUS_CFG[status];
@@ -360,7 +401,7 @@ function CategoryChip({ category }: { category: Category }) {
   );
 }
 
-// ─── Service Card ────────────────────────────────────────────────────────────
+// Service Card
 
 function CheckingChip() {
   return (
@@ -537,7 +578,7 @@ function ServiceCard({ service, onEdit, manageMode, isChecking, selected, onSele
   );
 }
 
-// ─── List Row ────────────────────────────────────────────────────────────────
+// List Row
 
 function ServiceRow({ service, onEdit, isChecking, manageMode, selected, onSelect, onDragStart, onDragOver, onDrop }: {
   service: Service;
@@ -640,7 +681,7 @@ function ServiceRow({ service, onEdit, isChecking, manageMode, selected, onSelec
   );
 }
 
-// ─── Stat Card ───────────────────────────────────────────────────────────────
+// Stat Card
 
 function StatCard({ label, value, icon, accent, active = false, onClick, title }: {
   label: string;
@@ -673,7 +714,7 @@ function StatCard({ label, value, icon, accent, active = false, onClick, title }
   );
 }
 
-// ─── Toggle Switch ───────────────────────────────────────────────────────────
+// Toggle Switch
 
 function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   return (
@@ -694,7 +735,7 @@ function Toggle({ on, onToggle }: { on: boolean; onToggle: () => void }) {
   );
 }
 
-// ─── Edit Modal ───────────────────────────────────────────────────────────────
+// Edit Modal
 
 const EMPTY: Omit<Service, "id"> = {
   name: "", description: "", category: "Infrastructure",
@@ -739,7 +780,7 @@ function EditModal({ service, onSave, onDelete, onClose }: {
             </div>
             <div>
               <h2 className="text-sm font-semibold text-foreground leading-none">
-                {isNew ? "Add Service" : `Edit — ${service.name}`}
+                {isNew ? "Add Service" : `Edit - ${service.name}`}
               </h2>
               <p className="text-[11px] text-muted-foreground mt-0.5 leading-none">
                 {isNew ? "Register a new self-hosted service" : "Update service configuration"}
@@ -912,7 +953,7 @@ function EditModal({ service, onSave, onDelete, onClose }: {
   );
 }
 
-// ─── Category Group Header ────────────────────────────────────────────────────
+// Category Group Header
 
 function DeleteConfirmModal({ action, onCancel, onConfirm }: {
   action: ConfirmAction;
@@ -920,16 +961,14 @@ function DeleteConfirmModal({ action, onCancel, onConfirm }: {
   onConfirm: () => Promise<void> | void;
 }) {
   const count = action.ids.length;
-  const visibleNames = action.names.slice(0, 5);
-  const extra = Math.max(0, action.names.length - visibleNames.length);
   const title = count === 1 ? "Delete service?" : `Delete ${count} services?`;
   const buttonText = count === 1 ? "Delete Service" : `Delete ${count} Services`;
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-[2px]" onClick={onCancel} />
-      <div className="relative z-10 w-full max-w-[420px] bg-card border border-border rounded-xl shadow-2xl shadow-black/40">
-        <div className="flex items-start gap-3 px-5 py-4 border-b border-border">
+      <div className="relative z-10 w-full max-w-[420px] bg-card border border-border rounded-xl shadow-2xl shadow-black/40 max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-start gap-3 px-5 py-4 border-b border-border flex-shrink-0">
           <div className="size-8 rounded-md bg-red-400/10 flex items-center justify-center flex-shrink-0">
             <Trash2 size={15} className="text-red-400" />
           </div>
@@ -941,18 +980,19 @@ function DeleteConfirmModal({ action, onCancel, onConfirm }: {
           </div>
         </div>
 
-        <div className="px-5 py-4">
-          <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5">
-            {visibleNames.map(name => (
-              <p key={name} className="text-xs text-foreground truncate">{name}</p>
+        <div className="px-5 py-4 flex-1 min-h-0 overflow-hidden">
+          <div
+            className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5 max-h-[38vh] overflow-y-auto overscroll-contain"
+            onWheel={e => e.stopPropagation()}
+            onTouchMove={e => e.stopPropagation()}
+          >
+            {action.names.map((name, index) => (
+              <p key={`${name}-${index}`} className="text-xs text-foreground break-words">{name}</p>
             ))}
-            {extra > 0 && (
-              <p className="text-xs text-muted-foreground">and {extra} more</p>
-            )}
           </div>
         </div>
 
-        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border">
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border flex-shrink-0">
           <button
             onClick={onCancel}
             className="h-8 px-3 text-xs rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
@@ -1282,7 +1322,7 @@ function GroupHeader({ category, count }: { category: Category; count: number })
   );
 }
 
-// ─── App ─────────────────────────────────────────────────────────────────────
+// App
 
 export default function App() {
   const [isDark, setIsDark] = useState(true);
@@ -1311,7 +1351,7 @@ export default function App() {
 
   const loadServices = async () => {
     try {
-      setServices(await apiRequest<Service[]>("/services"));
+      setServices(cleanServices(await apiRequest<unknown>("/services")));
     } catch (error) {
       console.error("Failed to load services", error);
     }
@@ -1326,6 +1366,7 @@ export default function App() {
   };
 
   const replaceService = (service: Service) => {
+    if (!service || !(service.status in STATUS_CFG)) return;
     setServices(prev => {
       const idx = prev.findIndex(s => s.id === service.id);
       if (idx < 0) return [...prev, service];
@@ -1378,8 +1419,11 @@ export default function App() {
       const ids = services.map(s => s.id);
       markChecking(ids, true);
       try {
-        const checked = await apiRequest<Service[]>("/services/check-all", { method: "POST" });
-        setServices(checked);
+        const checked = cleanServices(await apiRequest<unknown>("/services/check-all", { method: "POST" }));
+        setServices(prev => {
+          const currentIds = new Set(prev.map(service => service.id));
+          return checked.filter(service => currentIds.has(service.id));
+        });
       } catch (error) {
         console.error("Failed to refresh service statuses", error);
       } finally {
@@ -1624,7 +1668,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground" style={{ fontFamily: "'DM Sans', system-ui, sans-serif" }}>
 
-      {/* ─── Header ──────────────────────────────────────────────────────────── */}
+      {/* Header */}
       <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur-sm">
         <div className="max-w-screen-2xl mx-auto px-4 h-13 flex items-center gap-3" style={{ height: "52px" }}>
 
@@ -1660,7 +1704,7 @@ export default function App() {
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search services…"
+              placeholder="Search services..."
               className="w-full h-8 pl-8 pr-7 bg-muted/40 border border-border rounded-md text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:border-primary/40 focus:bg-muted/60 transition-colors"
             />
             {search && (
@@ -1741,7 +1785,7 @@ export default function App() {
         </div>
       </header>
 
-      {/* ─── Main ────────────────────────────────────────────────────────────── */}
+      {/* Main */}
       <main className="max-w-screen-2xl mx-auto px-4 py-4 space-y-4">
 
         {/* Stats Row */}
@@ -1867,11 +1911,11 @@ export default function App() {
               </span>
             )}
             {filtered.length} service{filtered.length !== 1 ? "s" : ""}
-            {search && <span className="opacity-70"> • "{search}"</span>}
+            {search && <span className="opacity-70"> - "{search}"</span>}
           </p>
         </div>
 
-        {/* ─── Service Grid / List ─────────────────────────────────────────────── */}
+        {/* Service Grid / List */}
         {manageMode && (
           <div className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2">
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1916,7 +1960,7 @@ export default function App() {
               disabled={filtered.length === 0}
               className="h-7 px-2.5 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
-              Select Visible
+              Select All
             </button>
             <button
               onClick={() => setSelectedIds(new Set())}
@@ -2023,7 +2067,7 @@ export default function App() {
         )}
       </main>
 
-      {/* ─── Modal ───────────────────────────────────────────────────────────── */}
+      {/* Modal */}
       {modalService !== null && (
         <EditModal
           service={modalServiceObj}

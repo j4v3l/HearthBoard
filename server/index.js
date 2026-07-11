@@ -28,7 +28,7 @@ const categories = new Set(["AI", "Infrastructure", "Media", "Network", "Securit
 const checkTypes = new Set(["HTTP", "Ping", "TCP", "None"]);
 const statuses = new Set(["online", "offline", "slow", "unknown"]);
 const iconNames = new Set([
-  "Server", "Box", "Play", "Film", "Shield", "Globe", "Lock", "Camera", "Cpu",
+  "Hearthboard", "Server", "Box", "Play", "Film", "Shield", "Globe", "Lock", "Camera", "Cpu",
   "MessageSquare", "BarChart2", "Activity", "Cloud", "ShieldCheck", "GitBranch",
   "Wifi", "Database", "Terminal", "Monitor", "HardDrive", "Layers", "Network",
   "RefreshCw",
@@ -194,7 +194,7 @@ app.get("/api/services", async () => listServices());
 
 app.get("/api/services/:id", async (request, reply) => {
   const service = getService(request.params.id);
-  if (!service) return reply.notFound("Service not found");
+  if (!service) return reply.code(404).send("Service not found");
   return service;
 });
 
@@ -270,13 +270,13 @@ app.post("/api/services/import", async (request, reply) => {
 
 app.patch("/api/services/:id", async (request, reply) => {
   const existing = getService(request.params.id);
-  if (!existing) return reply.notFound("Service not found");
+  if (!existing) return reply.code(404).send("Service not found");
   const updated = updateService(request.params.id, normalizeService(request.body ?? {}, existing));
   return updated;
 });
 
 app.delete("/api/services/:id", async (request, reply) => {
-  if (!deleteService(request.params.id)) return reply.notFound("Service not found");
+  deleteService(request.params.id);
   return reply.code(204).send();
 });
 
@@ -292,7 +292,7 @@ app.post("/api/services/reorder", async (request) => {
 
 app.post("/api/services/:id/check", async (request, reply) => {
   const service = getService(request.params.id);
-  if (!service) return reply.notFound("Service not found");
+  if (!service) return reply.code(404).send("Service not found");
   const result = await runHealthCheck(service);
   return updateServiceStatus(service.id, result.status, result.responseTimeMs);
 });
@@ -301,7 +301,8 @@ app.post("/api/services/check-all", async () => {
   const checked = [];
   for (const service of listServices()) {
     const result = await runHealthCheck(service);
-    checked.push(updateServiceStatus(service.id, result.status, result.responseTimeMs));
+    const updated = updateServiceStatus(service.id, result.status, result.responseTimeMs);
+    if (updated) checked.push(updated);
   }
   return checked;
 });
@@ -320,7 +321,7 @@ await app.register(fastifyStatic, {
 
 app.setNotFoundHandler((request, reply) => {
   if (request.raw.url?.startsWith("/api/")) {
-    return reply.notFound("Route not found");
+    return reply.code(404).send("Route not found");
   }
   return reply
     .header("Cache-Control", "no-store")

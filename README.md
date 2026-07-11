@@ -1,4 +1,7 @@
-# Hearthboard
+<h1>
+  <img src="public/favicon.svg" alt="" width="36" height="36" align="center">
+  Hearthboard
+</h1>
 
 Hearthboard is a self-hosted dashboard for tracking homelab services, devices, and links. It includes a React frontend, a Fastify API, SQLite persistence, CRUD service management, health checks, drag-and-drop ordering, and CSV import/export.
 
