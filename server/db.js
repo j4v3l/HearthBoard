@@ -68,7 +68,7 @@ const rowToService = (row) => ({
 const defaultSettings = {
   dashboardName: "Hearthboard",
   dashboardSubtitle: "Service Monitor",
-  dashboardIcon: "Server",
+  dashboardIcon: "Hearthboard",
 };
 
 const settingRows = [
@@ -81,6 +81,9 @@ const seedSetting = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALU
 for (const [key, value] of settingRows) {
   seedSetting.run(key, value);
 }
+
+db.prepare("UPDATE settings SET value = ? WHERE key = ? AND value = ?")
+  .run(defaultSettings.dashboardIcon, "dashboardIcon", "Server");
 
 const insert = db.prepare(`
   INSERT INTO services (
