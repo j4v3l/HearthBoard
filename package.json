@@ -1,5 +1,5 @@
 {
-  "name": "homelab-dashboard",
+  "name": "hearthboard",
   "private": false,
   "version": "1.0.0",
   "type": "module",
@@ -26,5 +26,5 @@
     "tailwindcss": "4.1.12",
     "vite": "6.4.3"
   },
-  "description": "A self-hosted homelab service dashboard with CRUD, health checks, and CSV import/export."
+  "description": "A self-hosted dashboard for monitoring homelab services, devices, and health checks."
 }

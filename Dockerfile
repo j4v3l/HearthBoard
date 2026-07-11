@@ -11,7 +11,7 @@ FROM node:24.18.0-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV DATABASE_PATH=/data/homelab.db
+ENV DATABASE_PATH=/data/hearthboard.db
 
 RUN apt-get update \
   && apt-get install -y --no-install-recommends iputils-ping \

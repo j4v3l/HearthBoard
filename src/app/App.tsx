@@ -112,7 +112,7 @@ const CAT_CFG: Record<Category, { chip: string; active: string; hover: string }>
 const ALL_CATEGORIES: Category[] = ["AI", "Infrastructure", "Media", "Network", "Security"];
 
 const DEFAULT_SETTINGS: DashboardSettings = {
-  dashboardName: "Homelab Dashboard",
+  dashboardName: "Hearthboard",
   dashboardSubtitle: "Service Monitor",
   dashboardIcon: "Server",
 };
@@ -1023,7 +1023,7 @@ function DashboardSettingsModal({ settings, onSave, onClose }: {
               className={inputCls}
               value={form.dashboardName}
               onChange={e => set("dashboardName", e.target.value)}
-              placeholder="Homelab Dashboard"
+              placeholder="Hearthboard"
               autoFocus
             />
           </div>
@@ -1557,11 +1557,11 @@ export default function App() {
   };
 
   const handleExportCsv = () => {
-    downloadTextFile("homelab-services.csv", servicesToCsv(services));
+    downloadTextFile("hearthboard-services.csv", servicesToCsv(services));
   };
 
   const handleDownloadTemplate = () => {
-    downloadTextFile("homelab-import-template.csv", servicesToCsv(TEMPLATE_SERVICES));
+    downloadTextFile("hearthboard-import-template.csv", servicesToCsv(TEMPLATE_SERVICES));
   };
 
   const handleImportFile = async (file: File | null) => {

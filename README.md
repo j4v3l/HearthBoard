@@ -1,6 +1,6 @@
-# Homelab Dashboard
+# Hearthboard
 
-A self-hosted dashboard for tracking homelab services, devices, and links. It includes a React frontend, a Fastify API, SQLite persistence, CRUD service management, health checks, drag-and-drop ordering, and CSV import/export.
+Hearthboard is a self-hosted dashboard for tracking homelab services, devices, and links. It includes a React frontend, a Fastify API, SQLite persistence, CRUD service management, health checks, drag-and-drop ordering, and CSV import/export.
 
 The app starts with an empty database. Add services manually or import them from CSV.
 
@@ -27,7 +27,7 @@ Open:
 http://localhost:3000
 ```
 
-The database is stored in the Docker volume `homelab-dashboard-data`.
+The database is stored in the Docker volume `hearthboard-data`.
 
 ## First Run
 
@@ -98,9 +98,9 @@ Use this for bookmarks or services you do not want monitored.
 
 Manage mode includes:
 
-- `Template`: Downloads a sample CSV.
+- `Template`: Downloads `hearthboard-import-template.csv`.
 - `Import CSV`: Imports services.
-- `Export CSV`: Exports the current dashboard.
+- `Export CSV`: Exports the current dashboard as `hearthboard-services.csv`.
 
 Required CSV headers:
 
@@ -124,7 +124,7 @@ Environment variables:
 | --- | --- | --- |
 | `PORT` | `3000` | HTTP port inside the container |
 | `HOST` | `0.0.0.0` | Bind address |
-| `DATABASE_PATH` | `/data/homelab.db` in Docker | SQLite database path |
+| `DATABASE_PATH` | `/data/hearthboard.db` in Docker | SQLite database path |
 | `HEALTH_TIMEOUT_MS` | `5000` | Per-check timeout |
 | `SLOW_THRESHOLD_MS` | `1500` | Response time considered slow |
 | `ALLOW_INSECURE_TLS` | `true` in compose | Allows self-signed/internal HTTPS certificates |
@@ -185,7 +185,7 @@ For normal use, the easiest backup is `Manage -> Export CSV`.
 The SQLite database also lives in the Docker volume:
 
 ```text
-homelab-dashboard-data
+hearthboard-data
 ```
 
 ## Security Notes

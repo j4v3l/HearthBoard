@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { seedServices } from "./data/seed-services.js";
 
-const databasePath = process.env.DATABASE_PATH ?? path.resolve("data", "homelab.db");
+const databasePath = process.env.DATABASE_PATH ?? path.resolve("data", "hearthboard.db");
 fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
 export const db = new Database(databasePath);
@@ -66,7 +66,7 @@ const rowToService = (row) => ({
 });
 
 const defaultSettings = {
-  dashboardName: "Homelab Dashboard",
+  dashboardName: "Hearthboard",
   dashboardSubtitle: "Service Monitor",
   dashboardIcon: "Server",
 };
