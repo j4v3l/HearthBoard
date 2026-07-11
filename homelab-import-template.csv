@@ -1,6 +1,6 @@
 name,description,category,url,healthUrl,checkType,icon,statusCheckEnabled
-Proxmox VE,Virtualization management platform,Infrastructure,https://pve.lan,https://pve.lan,HTTP,Server,true
-EAP610,Access Point,Network,,192.168.0.102,Ping,Wifi,true
-ER605,Router/Firewall,Network,,192.168.0.1,Ping,Network,true
-Vaultwarden,Password manager,Security,https://vaultwarden.lan,https://vaultwarden.lan/api/alive,HTTP,Lock,true
-SSH Server,SSH port check,Infrastructure,,192.168.0.20:22,TCP,Terminal,true
+Example App,HTTP service example,Infrastructure,https://app.example.test,https://app.example.test/health,HTTP,Globe,true
+Example Router,Ping-only device example,Network,,router.lan,Ping,Network,true
+Example SSH,TCP port check example,Infrastructure,,server.lan:22,TCP,Terminal,true
+Example Media,Media service example,Media,https://media.example.test,https://media.example.test,HTTP,Film,true
+Example Notes,Saved link without status checks,AI,https://notes.example.test,,None,MessageSquare,false

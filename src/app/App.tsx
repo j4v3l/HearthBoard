@@ -112,19 +112,19 @@ const CAT_CFG: Record<Category, { chip: string; active: string; hover: string }>
 const ALL_CATEGORIES: Category[] = ["AI", "Infrastructure", "Media", "Network", "Security"];
 
 const DEFAULT_SETTINGS: DashboardSettings = {
-  dashboardName: "Andre's Homelab",
-  dashboardSubtitle: "Control Panel",
+  dashboardName: "Homelab Dashboard",
+  dashboardSubtitle: "Service Monitor",
   dashboardIcon: "Server",
 };
 
 const CSV_COLUMNS = ["name", "description", "category", "url", "healthUrl", "checkType", "icon", "statusCheckEnabled"];
 
 const TEMPLATE_SERVICES: ImportService[] = [
-  { name: "Proxmox VE", description: "Virtualization management platform", category: "Infrastructure", url: "https://pve.lan", healthUrl: "https://pve.lan", checkType: "HTTP", icon: "Server", statusCheckEnabled: true },
-  { name: "EAP610", description: "Access Point", category: "Network", url: "", healthUrl: "192.168.0.102", checkType: "Ping", icon: "Wifi", statusCheckEnabled: true },
-  { name: "ER605", description: "Router/Firewall", category: "Network", url: "", healthUrl: "192.168.0.1", checkType: "Ping", icon: "Network", statusCheckEnabled: true },
-  { name: "Vaultwarden", description: "Password manager", category: "Security", url: "https://vaultwarden.lan", healthUrl: "https://vaultwarden.lan/api/alive", checkType: "HTTP", icon: "Lock", statusCheckEnabled: true },
-  { name: "SSH Server", description: "SSH port check", category: "Infrastructure", url: "", healthUrl: "192.168.0.20:22", checkType: "TCP", icon: "Terminal", statusCheckEnabled: true },
+  { name: "Example App", description: "HTTP service example", category: "Infrastructure", url: "https://app.example.test", healthUrl: "https://app.example.test/health", checkType: "HTTP", icon: "Globe", statusCheckEnabled: true },
+  { name: "Example Router", description: "Ping-only device example", category: "Network", url: "", healthUrl: "router.lan", checkType: "Ping", icon: "Network", statusCheckEnabled: true },
+  { name: "Example SSH", description: "TCP port check example", category: "Infrastructure", url: "", healthUrl: "server.lan:22", checkType: "TCP", icon: "Terminal", statusCheckEnabled: true },
+  { name: "Example Media", description: "Media service example", category: "Media", url: "https://media.example.test", healthUrl: "https://media.example.test", checkType: "HTTP", icon: "Film", statusCheckEnabled: true },
+  { name: "Example Notes", description: "Saved link without status checks", category: "AI", url: "https://notes.example.test", healthUrl: "", checkType: "None", icon: "MessageSquare", statusCheckEnabled: false },
 ];
 
 const API_BASE = "/api";
@@ -764,7 +764,7 @@ function EditModal({ service, onSave, onDelete, onClose }: {
                 className={inputCls}
                 value={form.name}
                 onChange={e => set("name", e.target.value)}
-                placeholder="e.g. Vaultwarden"
+                placeholder="e.g. Example App"
                 autoFocus
               />
             </div>
@@ -828,9 +828,9 @@ function EditModal({ service, onSave, onDelete, onClose }: {
                 onChange={e => set("healthUrl", e.target.value)}
                 placeholder={
                   form.checkType === "Ping"
-                    ? "192.168.0.102 or eap610.lan"
+                    ? "router.lan or 192.0.2.10"
                     : form.checkType === "TCP"
-                      ? "192.168.0.50:22"
+                      ? "server.lan:22"
                       : "https://service.lan/health"
                 }
               />
@@ -1023,7 +1023,7 @@ function DashboardSettingsModal({ settings, onSave, onClose }: {
               className={inputCls}
               value={form.dashboardName}
               onChange={e => set("dashboardName", e.target.value)}
-              placeholder="Andre's Homelab"
+              placeholder="Homelab Dashboard"
               autoFocus
             />
           </div>

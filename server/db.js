@@ -66,8 +66,8 @@ const rowToService = (row) => ({
 });
 
 const defaultSettings = {
-  dashboardName: "Andre's Homelab",
-  dashboardSubtitle: "Control Panel",
+  dashboardName: "Homelab Dashboard",
+  dashboardSubtitle: "Service Monitor",
   dashboardIcon: "Server",
 };
 
