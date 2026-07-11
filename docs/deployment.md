@@ -21,19 +21,25 @@ flowchart LR
 
 ### Production pull
 
+After the GHCR image is published, set `HEARTHBOARD_IMAGE` in `.env` and pull:
+
 ```bash
 cp .env.example .env
+# Set HEARTHBOARD_IMAGE=ghcr.io/j4v3l/hearthboard:latest in .env
 docker compose pull
 docker compose up -d
 ```
 
 Open `http://localhost:3000` (or the port set in `.env`).
 
-### Build from source
+### Local build (default)
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+cp .env.example .env
+docker compose up -d --build
 ```
+
+Open `http://localhost:3000` (or the port set in `.env`).
 
 ### ICMP Ping checks
 

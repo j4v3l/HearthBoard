@@ -29,8 +29,7 @@ The app starts with an empty database. Add services manually or import them from
 
 ```bash
 cp .env.example .env
-docker compose pull
-docker compose up -d
+docker compose up -d --build
 ```
 
 Open:
@@ -40,6 +39,15 @@ http://localhost:3000
 ```
 
 The database is stored in the Docker volume `hearthboard-data`.
+
+### Using a published image
+
+After the GHCR image is available, set `HEARTHBOARD_IMAGE=ghcr.io/j4v3l/hearthboard:latest` in `.env`, then:
+
+```bash
+docker compose pull
+docker compose up -d
+```
 
 ## First Run
 
@@ -187,7 +195,7 @@ npm start
 Run the Docker image from your local source while developing:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+docker compose up -d --build
 ```
 
 Run the Vite dev server:

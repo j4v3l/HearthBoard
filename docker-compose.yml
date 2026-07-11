@@ -1,6 +1,10 @@
 services:
   hearthboard:
-    image: ${HEARTHBOARD_IMAGE:-ghcr.io/j4v3l/hearthboard:latest}
+    build:
+      context: .
+      args:
+        INSTALL_PING: ${INSTALL_PING:-true}
+    image: ${HEARTHBOARD_IMAGE:-hearthboard:local}
     container_name: ${HEARTHBOARD_CONTAINER_NAME:-hearthboard}
     restart: unless-stopped
     ports:

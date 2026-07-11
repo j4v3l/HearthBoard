@@ -1,4 +1,3 @@
 services:
   hearthboard:
-    build: .
     image: hearthboard:dev-local
