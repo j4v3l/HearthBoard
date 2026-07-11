@@ -180,4 +180,15 @@
     font-weight: var(--font-weight-normal);
     line-height: 1.5;
   }
+
+  .dark select {
+    color-scheme: dark;
+    background-color: var(--input-background);
+    color: var(--foreground);
+  }
+
+  .dark select option {
+    background-color: var(--card);
+    color: var(--foreground);
+  }
 }
