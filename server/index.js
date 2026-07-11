@@ -9,6 +9,7 @@ import {
   deleteService,
   getSettings,
   getService,
+  getServicesByNormalizedName,
   listServices,
   reorderServices,
   seedDatabase,
@@ -92,6 +93,16 @@ function isValidTcpTarget(value) {
   return port > 0 && port <= 65535 && (isValidIp(match[1]) || isValidHost(match[1]));
 }
 
+function toBool(value, fallback = true) {
+  if (typeof value === "boolean") return value;
+  if (value == null || value === "") return fallback;
+  return ["true", "1", "yes", "y", "on"].includes(String(value).trim().toLowerCase());
+}
+
+function normalizeNameKey(value) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
 function normalizeService(input, existing = {}) {
   const service = {
     id: existing.id ?? randomUUID(),
@@ -136,6 +147,20 @@ function normalizeService(input, existing = {}) {
   return service;
 }
 
+function normalizeImportedService(input, existing = {}) {
+  return normalizeService({
+    name: input.name,
+    description: input.description ?? "",
+    category: input.category,
+    url: input.url ?? "",
+    healthUrl: input.healthUrl ?? "",
+    checkType: input.checkType,
+    icon: input.icon ?? "Server",
+    status: "unknown",
+    statusCheckEnabled: toBool(input.statusCheckEnabled),
+  }, existing);
+}
+
 app.get("/api/health", async () => ({ ok: true }));
 
 app.get("/api/settings", async () => getSettings());
@@ -172,6 +197,61 @@ app.get("/api/services/:id", async (request, reply) => {
 app.post("/api/services", async (request, reply) => {
   const service = createService(normalizeService(request.body ?? {}));
   return reply.code(201).send(service);
+});
+
+app.post("/api/services/import", async (request, reply) => {
+  const requestedMode = String(request.body?.mode ?? "append");
+  const mode = ["append", "updateByName", "skipExisting"].includes(requestedMode) ? requestedMode : "append";
+  const rows = Array.isArray(request.body?.services) ? request.body.services : [];
+
+  if (rows.length === 0) throw badRequest("Import requires at least one service");
+  if (rows.length > 500) throw badRequest("Import is limited to 500 services at a time");
+
+  const imported = [];
+  const updated = [];
+  let skipped = 0;
+  const seenNames = new Set();
+
+  if (mode !== "append") {
+    for (const row of rows) {
+      const nameKey = normalizeNameKey(row.name);
+      if (!nameKey) continue;
+      if (seenNames.has(nameKey)) {
+        throw badRequest(`Import contains duplicate name "${String(row.name ?? "").trim()}"; remove duplicates before using this mode`);
+      }
+      seenNames.add(nameKey);
+    }
+  }
+
+  for (const row of rows) {
+    const matches = mode === "append" ? [] : getServicesByNormalizedName(row.name);
+
+    if (mode === "skipExisting" && matches.length > 0) {
+      skipped += 1;
+      continue;
+    }
+
+    if (mode === "updateByName" && matches.length > 1) {
+      throw badRequest(`Multiple existing services match "${String(row.name ?? "").trim()}"; rename or delete duplicates before updating by name`);
+    }
+
+    const existing = mode === "updateByName" ? matches[0] : null;
+    const service = normalizeImportedService(row, existing ?? {});
+
+    if (existing) {
+      updated.push(updateService(existing.id, service));
+    } else {
+      imported.push(createService(service));
+    }
+  }
+
+  return reply.code(201).send({
+    mode,
+    created: imported.length,
+    updated: updated.length,
+    skipped,
+    services: listServices(),
+  });
 });
 
 app.patch("/api/services/:id", async (request, reply) => {

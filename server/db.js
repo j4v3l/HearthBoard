@@ -120,6 +120,17 @@ export function getService(id) {
   return row ? rowToService(row) : null;
 }
 
+export function getServiceByName(name) {
+  const row = db.prepare("SELECT * FROM services WHERE name = ? ORDER BY display_order LIMIT 1").get(name);
+  return row ? rowToService(row) : null;
+}
+
+export function getServicesByNormalizedName(name) {
+  const normalized = String(name ?? "").trim().toLowerCase();
+  if (!normalized) return [];
+  return db.prepare("SELECT * FROM services WHERE lower(trim(name)) = ? ORDER BY display_order, name").all(normalized).map(rowToService);
+}
+
 export function createService(service) {
   const nextOrder = db.prepare("SELECT COALESCE(MAX(display_order), -1) + 1 AS nextOrder FROM services").get().nextOrder;
   insert.run({

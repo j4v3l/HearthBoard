@@ -1,0 +1,6 @@
+name,description,category,url,healthUrl,checkType,icon,statusCheckEnabled
+Proxmox VE,Virtualization management platform,Infrastructure,https://pve.lan,https://pve.lan,HTTP,Server,true
+EAP610,Access Point,Network,,192.168.0.102,Ping,Wifi,true
+ER605,Router/Firewall,Network,,192.168.0.1,Ping,Network,true
+Vaultwarden,Password manager,Security,https://vaultwarden.lan,https://vaultwarden.lan/api/alive,HTTP,Lock,true
+SSH Server,SSH port check,Infrastructure,,192.168.0.20:22,TCP,Terminal,true

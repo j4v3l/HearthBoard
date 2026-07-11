@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { clsx } from "clsx";
 import {
   Server, Box, Play, Film, Shield, Globe, Lock, Camera, Cpu,
@@ -6,6 +6,7 @@ import {
   Search, Moon, Sun, Edit2, Plus, X, Copy, ExternalLink, Check, Layers,
   Database, Terminal, Monitor, HardDrive, AlertTriangle, Clock, Zap,
   LayoutGrid, List, RefreshCw, Network, GripVertical, Trash2, CheckSquare, Square,
+  Upload, Download, FileSpreadsheet,
 } from "lucide-react";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -16,6 +17,7 @@ type FilterCategory = "All" | Category;
 type CheckType = "HTTP" | "Ping" | "TCP" | "None";
 type ViewMode = "grid" | "list";
 type StatusFilter = "all" | "online" | "offline" | "degraded";
+type ImportMode = "append" | "updateByName" | "skipExisting";
 type ConfirmAction =
   | { type: "single-delete"; ids: string[]; names: string[] }
   | { type: "bulk-delete"; ids: string[]; names: string[] };
@@ -40,6 +42,48 @@ interface DashboardSettings {
   dashboardName: string;
   dashboardSubtitle: string;
   dashboardIcon: string;
+}
+
+interface ImportService {
+  name: string;
+  description: string;
+  category: Category;
+  url: string;
+  healthUrl: string;
+  checkType: CheckType;
+  icon: string;
+  statusCheckEnabled: boolean;
+}
+
+interface ImportDraft {
+  fileName: string;
+  mode: ImportMode;
+  services: ImportService[];
+  errors: string[];
+}
+
+interface ImportSummary {
+  creates: number;
+  updates: number;
+  skips: number;
+  existingNameMatches: number;
+  appendDuplicates: string[];
+  duplicateImportNames: string[];
+  ambiguousUpdateNames: string[];
+}
+
+interface ImportResult {
+  mode: ImportMode;
+  created: number;
+  updated: number;
+  skipped: number;
+  services: Service[];
+}
+
+interface ImportSuccess {
+  created: number;
+  updated: number;
+  skipped: number;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -73,6 +117,16 @@ const DEFAULT_SETTINGS: DashboardSettings = {
   dashboardIcon: "Server",
 };
 
+const CSV_COLUMNS = ["name", "description", "category", "url", "healthUrl", "checkType", "icon", "statusCheckEnabled"];
+
+const TEMPLATE_SERVICES: ImportService[] = [
+  { name: "Proxmox VE", description: "Virtualization management platform", category: "Infrastructure", url: "https://pve.lan", healthUrl: "https://pve.lan", checkType: "HTTP", icon: "Server", statusCheckEnabled: true },
+  { name: "EAP610", description: "Access Point", category: "Network", url: "", healthUrl: "192.168.0.102", checkType: "Ping", icon: "Wifi", statusCheckEnabled: true },
+  { name: "ER605", description: "Router/Firewall", category: "Network", url: "", healthUrl: "192.168.0.1", checkType: "Ping", icon: "Network", statusCheckEnabled: true },
+  { name: "Vaultwarden", description: "Password manager", category: "Security", url: "https://vaultwarden.lan", healthUrl: "https://vaultwarden.lan/api/alive", checkType: "HTTP", icon: "Lock", statusCheckEnabled: true },
+  { name: "SSH Server", description: "SSH port check", category: "Infrastructure", url: "", healthUrl: "192.168.0.20:22", checkType: "TCP", icon: "Terminal", statusCheckEnabled: true },
+];
+
 const API_BASE = "/api";
 
 async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
@@ -93,6 +147,197 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (res.status === 204) return undefined as T;
   return res.json();
+}
+
+function escapeCsvCell(value: unknown) {
+  let text = String(value ?? "");
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  if (/[",\n\r]/.test(text)) return `"${text.replace(/"/g, '""')}"`;
+  return text;
+}
+
+function servicesToCsv(services: Array<Partial<ImportService>>) {
+  const rows = [
+    CSV_COLUMNS.join(","),
+    ...services.map(service => CSV_COLUMNS.map(column => escapeCsvCell(service[column as keyof ImportService])).join(",")),
+  ];
+  return `${rows.join("\n")}\n`;
+}
+
+function parseCsv(text: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (quoted) {
+      if (char === '"' && next === '"') {
+        cell += '"';
+        i += 1;
+      } else if (char === '"') {
+        quoted = false;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+
+    if (char === '"') quoted = true;
+    else if (char === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (char === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else if (char !== "\r") {
+      cell += char;
+    }
+  }
+
+  if (cell || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows.filter(csvRow => csvRow.some(value => value.trim() !== ""));
+}
+
+function parseBool(value: string) {
+  return ["true", "1", "yes", "y", "on"].includes(value.trim().toLowerCase());
+}
+
+function normalizeImportValue(value: string) {
+  const trimmed = value.trim();
+  return trimmed.startsWith("'") && /^[=+\-@]/.test(trimmed.slice(1)) ? trimmed.slice(1) : trimmed;
+}
+
+function normalizeImportName(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function countByName<T extends { name: string }>(items: T[]) {
+  const counts = new Map<string, number>();
+  for (const item of items) {
+    const key = normalizeImportName(item.name);
+    if (!key) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return counts;
+}
+
+function uniqueNamesForKeys<T extends { name: string }>(items: T[], keys: Set<string>) {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const item of items) {
+    const key = normalizeImportName(item.name);
+    if (!keys.has(key) || seen.has(key)) continue;
+    names.push(item.name.trim());
+    seen.add(key);
+  }
+  return names;
+}
+
+function summarizeImport(draft: ImportDraft, existingServices: Service[]): ImportSummary {
+  const existingCounts = countByName(existingServices);
+  const importCounts = countByName(draft.services);
+  const duplicateImportKeys = new Set([...importCounts].filter(([, count]) => count > 1).map(([key]) => key));
+  const ambiguousExistingKeys = new Set([...existingCounts].filter(([, count]) => count > 1).map(([key]) => key));
+  let creates = 0;
+  let updates = 0;
+  let skips = 0;
+  let existingNameMatches = 0;
+  const appendDuplicateKeys = new Set<string>();
+  const ambiguousUpdateKeys = new Set<string>();
+
+  for (const service of draft.services) {
+    const key = normalizeImportName(service.name);
+    const matchCount = existingCounts.get(key) ?? 0;
+    if (matchCount > 0) existingNameMatches += 1;
+
+    if (draft.mode === "append") {
+      creates += 1;
+      if (matchCount > 0) appendDuplicateKeys.add(key);
+      continue;
+    }
+
+    if (draft.mode === "skipExisting") {
+      if (matchCount > 0) skips += 1;
+      else creates += 1;
+      continue;
+    }
+
+    if (matchCount === 0) creates += 1;
+    else if (ambiguousExistingKeys.has(key)) ambiguousUpdateKeys.add(key);
+    else updates += 1;
+  }
+
+  return {
+    creates,
+    updates,
+    skips,
+    existingNameMatches,
+    appendDuplicates: uniqueNamesForKeys(draft.services, appendDuplicateKeys),
+    duplicateImportNames: uniqueNamesForKeys(draft.services, duplicateImportKeys),
+    ambiguousUpdateNames: uniqueNamesForKeys(draft.services, ambiguousUpdateKeys),
+  };
+}
+
+function buildImportDraft(text: string, fileName: string, mode: ImportMode): ImportDraft {
+  const rows = parseCsv(text);
+  const errors: string[] = [];
+  const services: ImportService[] = [];
+
+  if (rows.length === 0) return { fileName, mode, services, errors: ["CSV file is empty"] };
+
+  const headers = rows[0].map(header => header.trim());
+  const missing = CSV_COLUMNS.filter(column => !headers.includes(column));
+  if (missing.length) {
+    return { fileName, mode, services, errors: [`Missing required columns: ${missing.join(", ")}`] };
+  }
+
+  const indexes = Object.fromEntries(headers.map((header, index) => [header, index]));
+  rows.slice(1).forEach((row, rowIndex) => {
+    const line = rowIndex + 2;
+    const get = (column: string) => normalizeImportValue(row[indexes[column]] ?? "");
+    const service: ImportService = {
+      name: get("name"),
+      description: get("description"),
+      category: get("category") as Category,
+      url: get("url"),
+      healthUrl: get("healthUrl"),
+      checkType: get("checkType") as CheckType,
+      icon: get("icon") || "Server",
+      statusCheckEnabled: parseBool(get("statusCheckEnabled")),
+    };
+
+    if (!service.name) errors.push(`Row ${line}: name is required`);
+    if (!ALL_CATEGORIES.includes(service.category)) errors.push(`Row ${line}: invalid category "${service.category}"`);
+    if (!(["HTTP", "Ping", "TCP", "None"] as CheckType[]).includes(service.checkType)) errors.push(`Row ${line}: invalid checkType "${service.checkType}"`);
+    if (!ICON_MAP[service.icon]) errors.push(`Row ${line}: invalid icon "${service.icon}"`);
+    if (service.checkType === "HTTP" && !(service.healthUrl || service.url).startsWith("http")) errors.push(`Row ${line}: HTTP checks require a full URL`);
+    if (service.checkType === "TCP" && !/:\d{1,5}$/.test(service.healthUrl || service.url) && !(service.healthUrl || service.url).startsWith("http")) errors.push(`Row ${line}: TCP checks require host:port or URL`);
+    if (service.checkType === "Ping" && !(service.healthUrl || service.url)) errors.push(`Row ${line}: Ping checks require a target`);
+
+    services.push(service);
+  });
+
+  return { fileName, mode, services, errors };
+}
+
+function downloadTextFile(fileName: string, text: string, type = "text/csv;charset=utf-8") {
+  const blob = new Blob([text], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -838,6 +1083,188 @@ function DashboardSettingsModal({ settings, onSave, onClose }: {
   );
 }
 
+function ImportServicesModal({ draft, existingServices, onModeChange, onCancel, onImport }: {
+  draft: ImportDraft;
+  existingServices: Service[];
+  onModeChange: (mode: ImportMode) => void;
+  onCancel: () => void;
+  onImport: () => Promise<void> | void;
+}) {
+  const summary = summarizeImport(draft, existingServices);
+  const modeBlocksImport =
+    draft.mode === "updateByName" && (summary.ambiguousUpdateNames.length > 0 || summary.duplicateImportNames.length > 0)
+      ? true
+      : draft.mode === "skipExisting" && summary.duplicateImportNames.length > 0;
+  const canImport = draft.services.length > 0 && draft.errors.length === 0 && !modeBlocksImport;
+  const warnings = draft.mode === "append" && summary.appendDuplicates.length > 0
+    ? [`Append mode will create duplicate records for: ${summary.appendDuplicates.join(", ")}.`]
+    : [];
+  const blockingIssues = [
+    ...draft.errors,
+    ...(draft.mode !== "append" && summary.duplicateImportNames.length > 0
+      ? [`This CSV repeats service names: ${summary.duplicateImportNames.join(", ")}. Remove duplicate rows before using this mode.`]
+      : []),
+    ...(draft.mode === "updateByName" && summary.ambiguousUpdateNames.length > 0
+      ? [`Update mode is blocked because your dashboard already has duplicate records for: ${summary.ambiguousUpdateNames.join(", ")}. Rename or delete the duplicate first.`]
+      : []),
+  ];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" onClick={onCancel} />
+      <div className="relative z-10 w-full max-w-[560px] bg-card border border-border rounded-xl shadow-2xl shadow-black/40 max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border flex-shrink-0">
+          <div className="flex items-center gap-2.5">
+            <div className="size-7 rounded-md bg-primary/15 flex items-center justify-center">
+              <FileSpreadsheet size={13} className="text-primary" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-foreground leading-none">Import Services</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5 leading-none truncate max-w-[360px]">{draft.fileName}</p>
+            </div>
+          </div>
+          <button
+            onClick={onCancel}
+            className="size-7 flex items-center justify-center rounded-md hover:bg-muted/60 text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <X size={14} />
+          </button>
+        </div>
+
+        <div className="px-5 py-4 flex flex-col gap-4 flex-1 min-h-0 overflow-hidden">
+          <div>
+            <label className="block text-[11px] font-medium text-muted-foreground mb-1.5 uppercase tracking-wide">Import Mode</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <button
+                onClick={() => onModeChange("append")}
+                className={clsx(
+                  "rounded-md border px-3 py-2 text-left text-xs transition-colors",
+                  draft.mode === "append" ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                )}
+              >
+                Add as new services
+                <span className="block text-[10px] opacity-70 mt-1">Creates every row as a new record.</span>
+              </button>
+              <button
+                onClick={() => onModeChange("updateByName")}
+                className={clsx(
+                  "rounded-md border px-3 py-2 text-left text-xs transition-colors",
+                  draft.mode === "updateByName" ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                )}
+              >
+                Update matching names
+                <span className="block text-[10px] opacity-70 mt-1">Amends one clear name match.</span>
+              </button>
+              <button
+                onClick={() => onModeChange("skipExisting")}
+                className={clsx(
+                  "rounded-md border px-3 py-2 text-left text-xs transition-colors",
+                  draft.mode === "skipExisting" ? "border-primary/40 bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground hover:bg-muted/30"
+                )}
+              >
+                Skip existing names
+                <span className="block text-[10px] opacity-70 mt-1">Adds only names not already here.</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-6 gap-2">
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className="text-lg font-semibold text-foreground leading-none">{draft.services.length}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Rows</p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className="text-lg font-semibold text-emerald-400 leading-none">{summary.creates}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Creates</p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className="text-lg font-semibold text-primary leading-none">{summary.updates}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Updates</p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className="text-lg font-semibold text-amber-300 leading-none">{summary.skips}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Skips</p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className="text-lg font-semibold text-amber-300 leading-none">{warnings.length}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Warnings</p>
+            </div>
+            <div className="rounded-md border border-border bg-muted/20 px-3 py-2">
+              <p className={clsx("text-lg font-semibold leading-none", blockingIssues.length ? "text-red-400" : "text-emerald-400")}>{blockingIssues.length}</p>
+              <p className="text-[10px] text-muted-foreground mt-1">Issues</p>
+            </div>
+          </div>
+
+          {warnings.length > 0 && (
+            <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-3 space-y-1.5">
+              {warnings.map(warning => (
+                <p key={warning} className="text-xs text-amber-200">{warning}</p>
+              ))}
+            </div>
+          )}
+
+          {blockingIssues.length > 0 ? (
+            <div className="rounded-lg border border-red-400/20 bg-red-400/10 p-3 space-y-1.5">
+              {blockingIssues.map(issue => (
+                <p key={issue} className="text-xs text-red-300">{issue}</p>
+              ))}
+            </div>
+          ) : (
+            <div
+              className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain"
+              onWheel={e => e.stopPropagation()}
+              onTouchMove={e => e.stopPropagation()}
+            >
+              {draft.services.map(service => (
+                <div key={`${service.name}-${service.healthUrl}`} className="flex items-center gap-2 text-xs">
+                  <span className="text-foreground truncate flex-1">{service.name}</span>
+                  <CategoryChip category={service.category} />
+                  <span className="text-muted-foreground font-mono">{service.checkType}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 px-5 py-4 border-t border-border flex-shrink-0">
+          <button
+            onClick={onCancel}
+            className="h-8 px-3 text-xs rounded-md border border-border text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onImport}
+            disabled={!canImport}
+            className="h-8 px-3 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
+          >
+            Import {draft.services.length} Services
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ImportSuccessToast({ result }: { result: ImportSuccess }) {
+  return (
+    <div className="fixed right-4 bottom-4 z-[60] w-[320px] rounded-xl border border-emerald-400/25 bg-card shadow-2xl shadow-black/40 overflow-hidden">
+      <div className="h-0.5 bg-emerald-400" />
+      <div className="p-4 flex items-start gap-3">
+        <div className="size-8 rounded-md bg-emerald-400/10 flex items-center justify-center flex-shrink-0">
+          <Check size={15} className="text-emerald-400" strokeWidth={2.25} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground leading-none">Import complete</p>
+          <p className="text-[11px] text-muted-foreground mt-1.5 leading-relaxed">
+            Created {result.created}, updated {result.updated}, skipped {result.skipped}.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GroupHeader({ category, count }: { category: Category; count: number }) {
   const cfg = CAT_CFG[category];
   return (
@@ -870,6 +1297,9 @@ export default function App() {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [orderDirty, setOrderDirty] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
+  const [importSuccess, setImportSuccess] = useState<ImportSuccess | null>(null);
+  const importInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadServices = async () => {
     try {
@@ -979,6 +1409,23 @@ export default function App() {
 
     saveOrder();
   }, [draggedId, orderDirty, services]);
+
+  useEffect(() => {
+    if (!importSuccess) return;
+    const timeout = window.setTimeout(() => setImportSuccess(null), 3200);
+    return () => window.clearTimeout(timeout);
+  }, [importSuccess]);
+
+  useEffect(() => {
+    const modalOpen = modalService !== null || settingsModalOpen || importDraft !== null || confirmAction !== null;
+    if (!modalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [modalService, settingsModalOpen, importDraft, confirmAction]);
 
   // Filter
   const filtered = services.filter(s => {
@@ -1107,6 +1554,40 @@ export default function App() {
       method: "PATCH",
       body: JSON.stringify(settings),
     }));
+  };
+
+  const handleExportCsv = () => {
+    downloadTextFile("homelab-services.csv", servicesToCsv(services));
+  };
+
+  const handleDownloadTemplate = () => {
+    downloadTextFile("homelab-import-template.csv", servicesToCsv(TEMPLATE_SERVICES));
+  };
+
+  const handleImportFile = async (file: File | null) => {
+    if (!file) return;
+    const text = await file.text();
+    setImportDraft(buildImportDraft(text, file.name, "append"));
+    if (importInputRef.current) importInputRef.current.value = "";
+  };
+
+  const updateImportMode = (mode: ImportMode) => {
+    setImportDraft(prev => prev ? { ...prev, mode } : prev);
+  };
+
+  const confirmImport = async () => {
+    if (!importDraft || importDraft.errors.length) return;
+    const result = await apiRequest<ImportResult>("/services/import", {
+      method: "POST",
+      body: JSON.stringify({ mode: importDraft.mode, services: importDraft.services }),
+    });
+    setServices(result.services);
+    setImportDraft(null);
+    setImportSuccess({
+      created: result.created,
+      updated: result.updated,
+      skipped: result.skipped,
+    });
   };
 
   const visibleSelectedCount = filtered.filter(service => selectedIds.has(service.id)).length;
@@ -1383,6 +1864,35 @@ export default function App() {
               )}
             </div>
             <div className="flex-1" />
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={e => handleImportFile(e.target.files?.[0] ?? null)}
+            />
+            <button
+              onClick={handleDownloadTemplate}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            >
+              <FileSpreadsheet size={12} />
+              Template
+            </button>
+            <button
+              onClick={() => importInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
+            >
+              <Upload size={12} />
+              Import CSV
+            </button>
+            <button
+              onClick={handleExportCsv}
+              disabled={services.length === 0}
+              className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-md border border-border text-xs text-muted-foreground hover:text-foreground hover:bg-muted/40 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <Download size={12} />
+              Export CSV
+            </button>
             <button
               onClick={selectVisible}
               disabled={filtered.length === 0}
@@ -1513,12 +2023,26 @@ export default function App() {
         />
       )}
 
+      {importDraft && (
+        <ImportServicesModal
+          draft={importDraft}
+          existingServices={services}
+          onModeChange={updateImportMode}
+          onCancel={() => setImportDraft(null)}
+          onImport={confirmImport}
+        />
+      )}
+
       {confirmAction && (
         <DeleteConfirmModal
           action={confirmAction}
           onCancel={() => setConfirmAction(null)}
           onConfirm={confirmDelete}
         />
+      )}
+
+      {importSuccess && (
+        <ImportSuccessToast result={importSuccess} />
       )}
 
       {/* Scrollbar suppression */}
