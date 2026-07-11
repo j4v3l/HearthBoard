@@ -23,6 +23,7 @@ The app starts with an empty database. Add services manually or import them from
 - Dashboard header customization
 - Docker Compose deployment with persistent SQLite storage
 - Kubernetes manifests with Kustomize overlays
+- Local stdio MCP server for AI clients with full service/settings CRUD
 - Nginx reverse proxy friendly
 
 ## Quick Start
@@ -227,6 +228,18 @@ kubectl apply -k deploy/kubernetes/overlays/icmp
 
 See [docs/deployment.md](docs/deployment.md) for storage classes, ingress, probes, backups, and upgrades.
 
+## MCP (AI clients)
+
+HearthBoard includes a local stdio MCP server that proxies the running REST API. Start the app first, then run:
+
+```bash
+npm run mcp
+```
+
+Set `HEARTHBOARD_BASE_URL` if the API is not on `http://127.0.0.1:3000`.
+
+See [docs/mcp.md](docs/mcp.md) for client configuration, tool catalog, confirmation gates, and troubleshooting.
+
 ## Data Backup
 
 For normal use, the easiest backup is `Manage -> Export CSV`.
@@ -240,6 +253,8 @@ hearthboard-data
 ## Security Notes
 
 This project currently does not include authentication. Run it on a trusted LAN or place it behind your own authentication layer if exposing it remotely.
+
+The local stdio MCP server grants dashboard-admin-equivalent access to services and settings for any client that can reach the running API. Destructive MCP tools require `confirm: true`, but read and write tools are otherwise unrestricted.
 
 Health checks can make outbound requests to hosts entered in the dashboard. Treat users with dashboard access as trusted.
 

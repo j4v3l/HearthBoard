@@ -13,6 +13,9 @@ Please open a GitHub issue with enough detail to reproduce the problem. If the i
 - Authentication is not included yet.
 - Run the app on a trusted LAN, behind a VPN, or behind an authenticated reverse proxy.
 - Users who can access the dashboard can create health-check targets, which causes the backend container to make network requests.
+- The local stdio MCP server proxies the same REST API as the dashboard. Anyone who can run MCP against a reachable HearthBoard instance can create, update, delete, import, and reorder services and change dashboard settings.
+- MCP destructive tools (`hearthboard_delete_service`, `hearthboard_import_services`, `hearthboard_check_all_services`) require `confirm: true`, but other MCP tools are not gated.
+- MCP health-check tools can initiate outbound network requests to configured service targets.
 - Ping checks require Docker `NET_RAW`; remove that capability if you do not use Ping checks.
 - Internal/self-signed HTTPS checks may require `ALLOW_INSECURE_TLS=true`. Set it to `false` for stricter certificate validation.
 

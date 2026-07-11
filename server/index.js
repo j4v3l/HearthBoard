@@ -20,6 +20,7 @@ import {
   updateServiceStatus,
 } from "./db.js";
 import { runHealthCheck } from "./health-checks.js";
+import { badRequest, formatErrorPayload, notFound } from "./errors.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicPath = path.resolve(__dirname, "..", "dist");
@@ -43,16 +44,18 @@ const app = Fastify({
   trustProxy: true,
 });
 
+app.setErrorHandler((error, request, reply) => {
+  const { statusCode, body } = formatErrorPayload(error);
+  if (statusCode >= 500) {
+    request.log.error(error);
+  }
+  reply.code(statusCode).send(body);
+});
+
 await app.register(rateLimit, {
   max: Number(process.env.RATE_LIMIT_MAX ?? 120),
   timeWindow: process.env.RATE_LIMIT_WINDOW ?? "1 minute",
 });
-
-function badRequest(message) {
-  const error = new Error(message);
-  error.statusCode = 400;
-  return error;
-}
 
 function parseHttpUrl(value) {
   try {
@@ -206,7 +209,7 @@ app.get("/api/services", async () => listServices());
 
 app.get("/api/services/:id", async (request, reply) => {
   const service = getService(request.params.id);
-  if (!service) return reply.code(404).send("Service not found");
+  if (!service) throw notFound("Service not found");
   return service;
 });
 
@@ -282,13 +285,14 @@ app.post("/api/services/import", async (request, reply) => {
 
 app.patch("/api/services/:id", async (request, reply) => {
   const existing = getService(request.params.id);
-  if (!existing) return reply.code(404).send("Service not found");
+  if (!existing) throw notFound("Service not found");
   const updated = updateService(request.params.id, normalizeService(request.body ?? {}, existing));
   return updated;
 });
 
 app.delete("/api/services/:id", async (request, reply) => {
-  deleteService(request.params.id);
+  const deleted = deleteService(request.params.id);
+  if (!deleted) throw notFound("Service not found");
   return reply.code(204).send();
 });
 
@@ -304,7 +308,7 @@ app.post("/api/services/reorder", async (request) => {
 
 app.post("/api/services/:id/check", async (request, reply) => {
   const service = getService(request.params.id);
-  if (!service) return reply.code(404).send("Service not found");
+  if (!service) throw notFound("Service not found");
   const result = await runHealthCheck(service);
   return updateServiceStatus(service.id, result.status, result.responseTimeMs);
 });
@@ -333,7 +337,12 @@ await app.register(fastifyStatic, {
 
 app.setNotFoundHandler((request, reply) => {
   if (request.raw.url?.startsWith("/api/")) {
-    return reply.code(404).send("Route not found");
+    return reply.code(404).send({
+      error: {
+        code: "NOT_FOUND",
+        message: "Route not found",
+      },
+    });
   }
   return reply
     .header("Cache-Control", "no-store")
