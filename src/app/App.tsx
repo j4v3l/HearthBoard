@@ -1083,9 +1083,11 @@ function DashboardSettingsModal({ settings, onSave, onClose }: {
   );
 }
 
-function ImportServicesModal({ draft, existingServices, onModeChange, onCancel, onImport }: {
+function ImportServicesModal({ draft, existingServices, importError, isImporting, onModeChange, onCancel, onImport }: {
   draft: ImportDraft;
   existingServices: Service[];
+  importError: string;
+  isImporting: boolean;
   onModeChange: (mode: ImportMode) => void;
   onCancel: () => void;
   onImport: () => Promise<void> | void;
@@ -1095,7 +1097,7 @@ function ImportServicesModal({ draft, existingServices, onModeChange, onCancel, 
     draft.mode === "updateByName" && (summary.ambiguousUpdateNames.length > 0 || summary.duplicateImportNames.length > 0)
       ? true
       : draft.mode === "skipExisting" && summary.duplicateImportNames.length > 0;
-  const canImport = draft.services.length > 0 && draft.errors.length === 0 && !modeBlocksImport;
+  const canImport = draft.services.length > 0 && draft.errors.length === 0 && !modeBlocksImport && !isImporting;
   const warnings = draft.mode === "append" && summary.appendDuplicates.length > 0
     ? [`Append mode will create duplicate records for: ${summary.appendDuplicates.join(", ")}.`]
     : [];
@@ -1209,6 +1211,10 @@ function ImportServicesModal({ draft, existingServices, onModeChange, onCancel, 
                 <p key={issue} className="text-xs text-red-300">{issue}</p>
               ))}
             </div>
+          ) : importError ? (
+            <div className="rounded-lg border border-red-400/20 bg-red-400/10 p-3 space-y-1.5">
+              <p className="text-xs text-red-300">{importError}</p>
+            </div>
           ) : (
             <div
               className="rounded-lg border border-border bg-muted/20 p-3 space-y-1.5 min-h-0 flex-1 overflow-y-auto overscroll-contain"
@@ -1238,7 +1244,7 @@ function ImportServicesModal({ draft, existingServices, onModeChange, onCancel, 
             disabled={!canImport}
             className="h-8 px-3 text-xs rounded-md bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed transition-colors font-medium"
           >
-            Import {draft.services.length} Services
+            {isImporting ? "Importing..." : `Import ${draft.services.length} Services`}
           </button>
         </div>
       </div>
@@ -1298,6 +1304,8 @@ export default function App() {
   const [orderDirty, setOrderDirty] = useState(false);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const [importDraft, setImportDraft] = useState<ImportDraft | null>(null);
+  const [importError, setImportError] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
   const [importSuccess, setImportSuccess] = useState<ImportSuccess | null>(null);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1567,27 +1575,37 @@ export default function App() {
   const handleImportFile = async (file: File | null) => {
     if (!file) return;
     const text = await file.text();
+    setImportError("");
     setImportDraft(buildImportDraft(text, file.name, "append"));
     if (importInputRef.current) importInputRef.current.value = "";
   };
 
   const updateImportMode = (mode: ImportMode) => {
+    setImportError("");
     setImportDraft(prev => prev ? { ...prev, mode } : prev);
   };
 
   const confirmImport = async () => {
-    if (!importDraft || importDraft.errors.length) return;
-    const result = await apiRequest<ImportResult>("/services/import", {
-      method: "POST",
-      body: JSON.stringify({ mode: importDraft.mode, services: importDraft.services }),
-    });
-    setServices(result.services);
-    setImportDraft(null);
-    setImportSuccess({
-      created: result.created,
-      updated: result.updated,
-      skipped: result.skipped,
-    });
+    if (!importDraft || importDraft.errors.length || isImporting) return;
+    setIsImporting(true);
+    setImportError("");
+    try {
+      const result = await apiRequest<ImportResult>("/services/import", {
+        method: "POST",
+        body: JSON.stringify({ mode: importDraft.mode, services: importDraft.services }),
+      });
+      setServices(result.services);
+      setImportDraft(null);
+      setImportSuccess({
+        created: result.created,
+        updated: result.updated,
+        skipped: result.skipped,
+      });
+    } catch (error) {
+      setImportError(error instanceof Error ? error.message : "Import failed");
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   const visibleSelectedCount = filtered.filter(service => selectedIds.has(service.id)).length;
@@ -2027,8 +2045,14 @@ export default function App() {
         <ImportServicesModal
           draft={importDraft}
           existingServices={services}
+          importError={importError}
+          isImporting={isImporting}
           onModeChange={updateImportMode}
-          onCancel={() => setImportDraft(null)}
+          onCancel={() => {
+            if (isImporting) return;
+            setImportDraft(null);
+            setImportError("");
+          }}
           onImport={confirmImport}
         />
       )}

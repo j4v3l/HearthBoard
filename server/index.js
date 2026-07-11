@@ -52,13 +52,17 @@ function badRequest(message) {
   return error;
 }
 
-function isValidUrl(value) {
+function parseHttpUrl(value) {
   try {
-    new URL(value);
-    return true;
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function isValidUrl(value) {
+  return Boolean(parseHttpUrl(value));
 }
 
 function defaultPortForProtocol(protocol) {
@@ -83,8 +87,8 @@ function isValidPingTarget(value) {
 
 function isValidTcpTarget(value) {
   if (!value) return false;
-  if (isValidUrl(value)) {
-    const url = new URL(value);
+  const url = parseHttpUrl(value);
+  if (url) {
     return Boolean(url.port || defaultPortForProtocol(url.protocol));
   }
   const match = value.match(/^(.+):(\d{1,5})$/);
@@ -207,9 +211,7 @@ app.post("/api/services/import", async (request, reply) => {
   if (rows.length === 0) throw badRequest("Import requires at least one service");
   if (rows.length > 500) throw badRequest("Import is limited to 500 services at a time");
 
-  const imported = [];
-  const updated = [];
-  let skipped = 0;
+  const operations = [];
   const seenNames = new Set();
 
   if (mode !== "append") {
@@ -227,7 +229,7 @@ app.post("/api/services/import", async (request, reply) => {
     const matches = mode === "append" ? [] : getServicesByNormalizedName(row.name);
 
     if (mode === "skipExisting" && matches.length > 0) {
-      skipped += 1;
+      operations.push({ type: "skip" });
       continue;
     }
 
@@ -237,11 +239,23 @@ app.post("/api/services/import", async (request, reply) => {
 
     const existing = mode === "updateByName" ? matches[0] : null;
     const service = normalizeImportedService(row, existing ?? {});
+    operations.push(existing
+      ? { type: "update", id: existing.id, service }
+      : { type: "create", service }
+    );
+  }
 
-    if (existing) {
-      updated.push(updateService(existing.id, service));
+  const imported = [];
+  const updated = [];
+  let skipped = 0;
+
+  for (const operation of operations) {
+    if (operation.type === "skip") {
+      skipped += 1;
+    } else if (operation.type === "update") {
+      updated.push(updateService(operation.id, operation.service));
     } else {
-      imported.push(createService(service));
+      imported.push(createService(operation.service));
     }
   }
 
@@ -292,6 +306,13 @@ app.post("/api/services/check-all", async () => {
   return checked;
 });
 
+app.get("/sw.js", async (request, reply) => {
+  return reply
+    .header("Cache-Control", "no-store")
+    .code(404)
+    .send("Service worker is not used by Hearthboard");
+});
+
 await app.register(fastifyStatic, {
   root: publicPath,
   prefix: "/",
@@ -301,7 +322,9 @@ app.setNotFoundHandler((request, reply) => {
   if (request.raw.url?.startsWith("/api/")) {
     return reply.notFound("Route not found");
   }
-  return reply.sendFile("index.html");
+  return reply
+    .header("Cache-Control", "no-store")
+    .sendFile("index.html");
 });
 
 await app.listen({ port, host });
