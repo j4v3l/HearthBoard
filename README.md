@@ -3,6 +3,12 @@
   Hearthboard
 </h1>
 
+<p>
+  <img alt="Release" src="https://img.shields.io/github/v/release/andrewilliams876/HearthBoard?label=Release&logo=github">
+  <img alt="Container" src="https://img.shields.io/badge/GHCR-hearthboard-blue?logo=docker">
+  <img alt="License" src="https://img.shields.io/github/license/andrewilliams876/HearthBoard?label=License">
+</p>
+
 Hearthboard is a self-hosted dashboard for tracking homelab services, devices, and links. It includes a React frontend, a Fastify API, SQLite persistence, CRUD service management, health checks, drag-and-drop ordering, and CSV import/export.
 
 The app starts with an empty database. Add services manually or import them from CSV.
@@ -207,3 +213,7 @@ Health checks can make outbound requests to hosts entered in the dashboard. Trea
 ICMP ping requires `NET_RAW` in Docker. Remove `cap_add: NET_RAW` if you do not need Ping checks.
 
 `ALLOW_INSECURE_TLS=true` is convenient for internal/self-signed services. Set it to `false` if you only monitor trusted public HTTPS certificates.
+
+## License
+
+Hearthboard is released under the MIT License. See [LICENSE](LICENSE).
