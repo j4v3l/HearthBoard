@@ -1,0 +1,21 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: hearthboard
+
+resources:
+  - namespace.yaml
+  - configmap.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: hearthboard
+      app.kubernetes.io/managed-by: kustomize
+
+images:
+  - name: ghcr.io/j4v3l/hearthboard
+    newName: ghcr.io/j4v3l/hearthboard
+    newTag: latest

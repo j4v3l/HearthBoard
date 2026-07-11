@@ -1,0 +1,5 @@
+services:
+  hearthboard:
+    # Required only for ICMP Ping checks. HTTP and TCP checks work without it.
+    cap_add:
+      - NET_RAW

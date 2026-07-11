@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  checkDatabaseReady,
+  closeDatabase,
   createService,
   deleteService,
   getSettings,
@@ -166,6 +168,16 @@ function normalizeImportedService(input, existing = {}) {
 }
 
 app.get("/api/health", async () => ({ ok: true }));
+
+app.get("/api/ready", async (request, reply) => {
+  try {
+    checkDatabaseReady();
+    return { ok: true };
+  } catch (error) {
+    request.log.error(error, "Readiness check failed");
+    return reply.code(503).send({ ok: false });
+  }
+});
 
 app.get("/api/settings", async () => getSettings());
 
@@ -329,3 +341,29 @@ app.setNotFoundHandler((request, reply) => {
 });
 
 await app.listen({ port, host });
+
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  app.log.info({ signal }, "Shutting down gracefully");
+
+  try {
+    await app.close();
+    closeDatabase();
+    app.log.info("Shutdown complete");
+    process.exit(0);
+  } catch (error) {
+    app.log.error(error, "Shutdown failed");
+    process.exit(1);
+  }
+}
+
+process.on("SIGTERM", () => {
+  void shutdown("SIGTERM");
+});
+
+process.on("SIGINT", () => {
+  void shutdown("SIGINT");
+});

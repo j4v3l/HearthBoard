@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hearthboard-config
+data:
+  NODE_ENV: production
+  PORT: "3000"
+  HOST: "0.0.0.0"
+  DATABASE_PATH: /data/hearthboard.db
+  HEALTH_TIMEOUT_MS: "5000"
+  SLOW_THRESHOLD_MS: "1500"
+  ALLOW_INSECURE_TLS: "false"
+  RATE_LIMIT_MAX: "120"
+  RATE_LIMIT_WINDOW: "1 minute"

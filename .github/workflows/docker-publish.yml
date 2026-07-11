@@ -9,7 +9,7 @@ on:
       - "v*.*.*"
 
 env:
-  IMAGE_NAME: ghcr.io/andrewilliams876/hearthboard
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/hearthboard
 
 jobs:
   publish:

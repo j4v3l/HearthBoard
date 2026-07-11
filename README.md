@@ -22,11 +22,13 @@ The app starts with an empty database. Add services manually or import them from
 - Manage mode for bulk delete, drag ordering, CSV import, CSV export, and template download
 - Dashboard header customization
 - Docker Compose deployment with persistent SQLite storage
+- Kubernetes manifests with Kustomize overlays
 - Nginx reverse proxy friendly
 
 ## Quick Start
 
 ```bash
+cp .env.example .env
 docker compose pull
 docker compose up -d
 ```
@@ -89,6 +91,12 @@ router.lan
 
 Docker requires `cap_add: NET_RAW` for ICMP ping checks. HTTP and TCP checks do not need it.
 
+Enable Ping support with the optional ICMP overlay:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.icmp.yml up -d
+```
+
 ### TCP
 
 Use this for checking whether a host and port are reachable.
@@ -137,7 +145,7 @@ Environment variables:
 | `DATABASE_PATH` | `/data/hearthboard.db` in Docker | SQLite database path |
 | `HEALTH_TIMEOUT_MS` | `5000` | Per-check timeout |
 | `SLOW_THRESHOLD_MS` | `1500` | Response time considered slow |
-| `ALLOW_INSECURE_TLS` | `true` in compose | Allows self-signed/internal HTTPS certificates |
+| `ALLOW_INSECURE_TLS` | `false` in Compose/Kubernetes | Allows self-signed/internal HTTPS certificates |
 | `RATE_LIMIT_MAX` | `120` | API rate limit per window |
 | `RATE_LIMIT_WINDOW` | `1 minute` | API rate limit window |
 
@@ -194,6 +202,23 @@ Run the API directly:
 npm run dev:api
 ```
 
+## Kubernetes
+
+Apply the default overlay:
+
+```bash
+kubectl apply -k deploy/kubernetes/overlays/default
+kubectl -n hearthboard port-forward svc/hearthboard 3000:80
+```
+
+For ICMP Ping checks:
+
+```bash
+kubectl apply -k deploy/kubernetes/overlays/icmp
+```
+
+See [docs/deployment.md](docs/deployment.md) for storage classes, ingress, probes, backups, and upgrades.
+
 ## Data Backup
 
 For normal use, the easiest backup is `Manage -> Export CSV`.
@@ -210,9 +235,9 @@ This project currently does not include authentication. Run it on a trusted LAN 
 
 Health checks can make outbound requests to hosts entered in the dashboard. Treat users with dashboard access as trusted.
 
-ICMP ping requires `NET_RAW` in Docker. Remove `cap_add: NET_RAW` if you do not need Ping checks.
+ICMP ping requires `NET_RAW` in Docker or Kubernetes. Remove the ICMP overlay if you do not need Ping checks.
 
-`ALLOW_INSECURE_TLS=true` is convenient for internal/self-signed services. Set it to `false` if you only monitor trusted public HTTPS certificates.
+`ALLOW_INSECURE_TLS=true` is convenient for internal/self-signed services. The default in Compose and Kubernetes is `false`.
 
 ## License
 
