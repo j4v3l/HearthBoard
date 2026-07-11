@@ -1,7 +1,6 @@
 services:
   hearthboard:
-    build: .
-    image: hearthboard:latest
+    image: ghcr.io/andrewilliams876/hearthboard:latest
     container_name: hearthboard
     restart: unless-stopped
     ports:

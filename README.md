@@ -21,7 +21,8 @@ The app starts with an empty database. Add services manually or import them from
 ## Quick Start
 
 ```bash
-docker compose up -d --build
+docker compose pull
+docker compose up -d
 ```
 
 Open:
@@ -167,6 +168,12 @@ Run the frontend/API together through the Fastify server after building:
 ```bash
 npm run build
 npm start
+```
+
+Run the Docker image from your local source while developing:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
 
 Run the Vite dev server:
