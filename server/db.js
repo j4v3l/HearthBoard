@@ -227,3 +227,12 @@ export function updateSettings(settings) {
   save();
   return getSettings();
 }
+
+export function checkDatabaseReady() {
+  db.prepare("SELECT 1").get();
+  return true;
+}
+
+export function closeDatabase() {
+  db.close();
+}

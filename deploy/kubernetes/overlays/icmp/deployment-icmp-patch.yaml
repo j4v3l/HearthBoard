@@ -1,0 +1,13 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hearthboard
+spec:
+  template:
+    spec:
+      containers:
+        - name: hearthboard
+          securityContext:
+            capabilities:
+              add:
+                - NET_RAW

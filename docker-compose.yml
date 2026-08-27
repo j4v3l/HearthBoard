@@ -1,23 +1,40 @@
 services:
   hearthboard:
-    image: ghcr.io/andrewilliams876/hearthboard:latest
-    container_name: hearthboard
+    build:
+      context: .
+      args:
+        INSTALL_PING: ${INSTALL_PING:-false}
+    image: ${HEARTHBOARD_IMAGE:-hearthboard:local}
+    container_name: ${HEARTHBOARD_CONTAINER_NAME:-hearthboard}
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${HEARTHBOARD_PORT:-3000}:3000"
     environment:
       NODE_ENV: production
       PORT: 3000
+      HOST: ${HOST:-0.0.0.0}
       DATABASE_PATH: /data/hearthboard.db
-      HEALTH_TIMEOUT_MS: 5000
-      SLOW_THRESHOLD_MS: 1500
-      ALLOW_INSECURE_TLS: "true"
+      HEALTH_TIMEOUT_MS: ${HEALTH_TIMEOUT_MS:-5000}
+      SLOW_THRESHOLD_MS: ${SLOW_THRESHOLD_MS:-1500}
+      ALLOW_INSECURE_TLS: ${ALLOW_INSECURE_TLS:-false}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+      RATE_LIMIT_WINDOW: ${RATE_LIMIT_WINDOW:-1 minute}
     volumes:
       - hearthboard-data:/data
-    # Required only for ICMP Ping checks. HTTP and TCP checks work without it.
-    cap_add:
-      - NET_RAW
+    stop_grace_period: 30s
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/ready').then((response) => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
 
 volumes:
   hearthboard-data:
-    name: hearthboard-data
+    name: ${HEARTHBOARD_VOLUME_NAME:-hearthboard-data}

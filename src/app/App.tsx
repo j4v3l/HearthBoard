@@ -171,8 +171,25 @@ async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!res.ok) {
-    const message = await res.text().catch(() => "Request failed");
-    throw new Error(message || "Request failed");
+    const body = await res.text().catch(() => "");
+    if (body) {
+      try {
+        const parsed = JSON.parse(body) as { error?: { message?: string }; message?: string };
+        if (parsed?.error?.message) {
+          throw new Error(parsed.error.message);
+        }
+        if (parsed?.message) {
+          throw new Error(parsed.message);
+        }
+      } catch (error) {
+        if (error instanceof SyntaxError) {
+          throw new Error(body);
+        }
+        throw error;
+      }
+      throw new Error(body);
+    }
+    throw new Error("Request failed");
   }
 
   if (res.status === 204) return undefined as T;
